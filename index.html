@@ -84,6 +84,22 @@ input[type=file]{display:none}
 .ar-dot.show{display:block}
 @keyframes arblink{50%{opacity:.15}}
 #arFlash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .35s;z-index:4}
+.ar-glass{background:rgba(15,19,23,.74);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:14px}
+#arFps{position:absolute;top:calc(56px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:9.5px;letter-spacing:1.8px;color:rgba(220,240,246,.8);background:rgba(15,19,23,.55);padding:4px 10px;border-radius:99px;display:none;z-index:3;direction:ltr}
+#arCalib{position:absolute;top:calc(88px + env(safe-area-inset-top));left:12px;width:186px;padding:10px 13px;display:none;font-size:10.5px;line-height:2.1;color:#cfe4ec;z-index:3;direction:ltr;text-align:left}
+#arCalib .t,#arStatus .t,#arMapWrap .t{font-size:9px;letter-spacing:2.5px;color:#8fd8e8;margin-bottom:5px}
+#arCalib .ok{color:#9fe8c8}
+#arCalib .ready{display:inline-block;margin-top:5px;background:#7fe0b0;color:#0b1512;font-weight:700;font-size:10px;padding:2px 12px;border-radius:99px;letter-spacing:1px}
+#arStatus{position:absolute;top:calc(88px + env(safe-area-inset-top));right:12px;width:180px;padding:10px 13px;display:none;font-size:10.5px;line-height:2.1;color:#cfe4ec;z-index:3;direction:ltr;text-align:left}
+#arStatus .ok{color:#9fe8c8}
+#arPipeline{position:absolute;bottom:calc(118px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:none;font-size:9px;letter-spacing:1.6px;color:rgba(225,244,250,.8);background:rgba(15,19,23,.6);padding:5px 14px;border-radius:99px;white-space:nowrap;direction:ltr;z-index:3}
+#arMapWrap{position:absolute;bottom:calc(170px + env(safe-area-inset-bottom));right:12px;padding:9px 11px;display:none;z-index:3;direction:ltr}
+#arMap{display:block;width:118px;height:140px}
+#arSummary .hdr{font-size:10px;letter-spacing:2.5px;color:#9fe8c8;margin-bottom:7px;text-align:left;direction:ltr}
+#arSummary .row{display:flex;justify-content:space-between;align-items:center;gap:16px;font-size:12px;line-height:2.15;direction:ltr;text-align:left}
+#arSummary .lbl{color:#8fb5c2;letter-spacing:1.2px}
+#arSummary .val{color:#eef7fa;font-weight:600}
+#arSummary .tag{font-style:normal;font-size:8px;color:#8fd8e8;border:1px solid rgba(143,216,232,.4);padding:0 5px;border-radius:99px;margin-left:6px;vertical-align:1px}
 #statsModal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:600;display:none;overflow:auto}
 #statsModal.on{display:block}
 .statcard{background:#0f1a15;border:1px solid #1f2e27;border-radius:12px;padding:10px 12px;text-align:center}
@@ -299,6 +315,11 @@ input[type=file]{display:none}
   </div>
   <div id="arColors" class="ar-colors"></div>
   <div id="arFlash"></div>
+  <span id="arFps"></span>
+  <div id="arCalib" class="ar-glass"></div>
+  <div id="arStatus" class="ar-glass"></div>
+  <div id="arPipeline">VISION → TRACKING → PHYSICS → PREDICTION</div>
+  <div id="arMapWrap" class="ar-glass"><div class="t">3D TRAJECTORY</div><canvas id="arMap" width="118" height="140"></canvas></div>
   <div class="ar-zoom" id="arZoom">
     <button data-z="1" class="on">1×</button>
     <button data-z="2">2×</button>
@@ -1038,6 +1059,7 @@ let vel={x:0,y:0},lostN=0,tImpact=0,trail=[],seedCol=[245,245,245];
 let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=false,lastGray=null;
 let kf=null,trackMatched=0,trackTotal=0,predPts=null;
 let tracerCol=(function(){try{return localStorage.getItem('golftar_c')||'#ff4d00';}catch(e){return '#ff4d00';}})(),impactCnt=0;
+let frameCount=0,fpsEma=0,lastLumaAvg=0.5,calibDone=false,lastLatM=0,lastCarryM=0;
 let rec=null,chunks=[],clipUrl=null,lastMedia=null,beepCtx=null;
 
 /* ================= ماژول فیزیک (GolfPhysicsEngine) — سند §14-25 ================= */
@@ -1175,6 +1197,9 @@ function stopAll(){
   ball=null;prevGray=null;prevCand=null;ballStable=0;trail=[];clubSeen=false;clubBox=null;
   $('arStBall').className='ar-chipic';$('arStClub').className='ar-chipic';
   $('arDemo').classList.remove('ok');
+  const hiders=['arFps','arCalib','arStatus','arPipeline','arMapWrap'];
+  hiders.forEach(id=>{const el=$(id);if(el)el.style.display='none';});
+  calibDone=false;lastCarryM=0;
   $('arZoom').style.display='flex';
   syncZoomBtns();
 }
@@ -1455,7 +1480,7 @@ function trackStep(gray,data,dt){
 }
 /* ---------- تحلیل ضربه: سرعت، زاویه، کری، شکل، اطمینان — سند §11-33 ---------- */
 function analyzeShot(reason){
-  const res={ballSpeedMps:null,launchDeg:null,carryM:null,carryPred:false,shape:'—',conf:0,predPts:null,calib:'diam'};
+  const res={ballSpeedMps:null,launchDeg:null,carryM:null,carryPred:false,shape:'—',conf:0,predPts:null,calib:'diam',latM:0};
   if(obs.length<6)return res;
   const t0=obs[0].t;
   const early=obs.filter(o=>o.t-t0<0.55);
@@ -1503,6 +1528,7 @@ function analyzeShot(reason){
           }
           const rPx=ball.r||6;
           const latM=maxDev/pxPerMeter,latPct=res.carryM?Math.abs(latM)/res.carryM*100:0;
+          res.latM=(devSign||0)*latM; /* §27 انحراف جانبی علامت‌دار (متر) */
           if(Math.abs(maxDev)<rPx*1.6)res.shape='STR';
           else if(latPct>9)res.shape=devSign>0?'SLICE→':'←HOOK';
           else if(latPct>3.5)res.shape=devSign>0?'FADE→':'←DRAW';
@@ -1539,23 +1565,26 @@ function finishShot(el,reason){
   /* ذخیره — سند §36 */
   if(A.carryM){
     saveShot({t:Date.now(),club:'—',ballSpeedMps:A.ballSpeedMps,launchDeg:A.launchDeg,
-      carryM:A.carryM,apexM:apexM,flight:flight,shape:A.shape,conf:conf,dist:distNow});
+      carryM:A.carryM,apexM:apexM,flight:flight,shape:A.shape,conf:conf,dist:distNow,lat:lastLatM});
   }
   predPts=A.predPts||null;
-  const est=A.carryPred?'≈':'';
-  const carryYd=A.carryM?A.carryM*YD:null;
-  const bs=A.ballSpeedMps?A.ballSpeedMps*MPH:null;
-  let html='<div class="big">'+est+faNum(distNow.toFixed(1))+'<small> م</small></div>';
-  if(carryYd)html+='<div class="sub2" style="color:#ffd166">📏 کری تخمینی: '+faNum(carryYd.toFixed(0))+' yd</div>';
-  let l2='';
-  if(bs)l2+='⚡ '+faNum(bs.toFixed(0))+' mph';
-  if(A.launchDeg!==null)l2+=(l2?' · ':'')+'📐 '+faNum(A.launchDeg.toFixed(0))+'°';
-  if(l2)html+='<div class="sub2">'+l2+'</div>';
-  html+='<div class="sub2">↑ '+faNum(apexM.toFixed(1))+' م · ⏱ '+faNum(flight.toFixed(1))+' s · '+A.shape+' · ✔️'+faNum(conf)+'%</div>';
-  if(reason==='lost')html+='<div class="sub2">❓</div>';
+  lastLatM=A.latM||0;lastCarryM=A.carryM||distNow;
+  /* تله‌متری حرفه‌ای — سند کانسپت (برچسب صداقت §42) */
+  const rows=[];
+  if(A.ballSpeedMps)rows.push(['BALL SPEED',(A.ballSpeedMps*MPH).toFixed(1)+' MPH','EST']);
+  if(A.launchDeg!==null&&A.launchDeg!==undefined)rows.push(['LAUNCH',A.launchDeg.toFixed(1)+'°','EST']);
+  if(A.carryM)rows.push(['CARRY',(A.carryM*YD).toFixed(0)+' YD','EST']);
+  rows.push(['APEX',(apexM*YD).toFixed(1)+' YD','EST']);
+  rows.push(['LATERAL',((lastLatM>=0?'+':'')+(lastLatM*YD).toFixed(1))+' YD','EST']);
+  rows.push(['LIVE','≈'+distNow.toFixed(1)+' M','']);
+  rows.push(['TRACKING',conf+'%',conf>=85?'HIGH':'']);
+  let html='<div class="hdr">TRAJECTORY LOCKED ✓'+(A.shape&&A.shape!=='—'?' · '+A.shape:'')+'</div>';
+  html+=rows.map(r=>'<div class="row"><span class="lbl">'+r[0]+'</span><span class="val">'+r[1]+(r[2]?'<i class="tag">'+r[2]+'</i>':'')+'</span></div>').join('');
+  if(reason==='lost')html+='<div class="sub2" style="direction:ltr">✕ BALL LEFT FRAME</div>';
   if(clipUrl)html+='<a class="ar-icbtn" href="'+clipUrl+'" download="golf-shot.webm">⬇</a>';
   $('arSummary').innerHTML=html;
   $('arSummary').classList.add('show');
+  mapWrap.style.display='block';drawShotMap();
 }
 
 /* لمس روی تصویر در حالت جستجو/مسلح = قفل دستی توپ */
@@ -1706,6 +1735,78 @@ function drawHud(){
   }
 }
 
+/* ---------- پنل‌های پرمیوم: FPS/کالیبراسیون/وضعیت/مینی‌مپ (کانسپت) ---------- */
+const fpsChip=$('arFps'),calibEl=$('arCalib'),statusEl=$('arStatus'),pipeEl=$('arPipeline'),mapWrap=$('arMapWrap'),mapCv=$('arMap');
+const CAL_ITEMS=['CAMERA ALIGNMENT','LIGHTING','GROUND PLANE','BALL POSITION','TARGET LINE'];
+function renderCalib(ok){
+  calibEl.innerHTML='<div class="t">CAMERA CALIBRATION</div>'
+    +CAL_ITEMS.map((c,i)=>'<div class="'+(i<ok?'ok':'')+'">'+(i<ok?'✓':'○')+' '+c+'</div>').join('')
+    +(ok>=5?'<div class="ready">READY TO TRACK</div>':'');
+}
+function drawShotMap(){
+  const g2=mapCv.getContext('2d');const W=mapCv.width,H=mapCv.height;
+  g2.clearRect(0,0,W,H);
+  const shots=loadShots().filter(s=>s.carryM);
+  const pts=shots.map(s=>[(s.lat||0)*YD,s.carryM*YD]);
+  if(lastCarryM>0)pts.push([lastLatM*YD,lastCarryM*YD]);
+  if(!pts.length)return;
+  const maxC=Math.max.apply(null,pts.map(p=>p[1]))+12;
+  const k=(H-34)/maxC,cx0=W/2,by=H-16;
+  /* خط هدف */
+  g2.strokeStyle='rgba(255,255,255,.35)';g2.setLineDash([3,4]);
+  g2.beginPath();g2.moveTo(cx0,by);g2.lineTo(cx0,10);g2.stroke();g2.setLineDash([]);
+  /* نقاط پراکندگی تاریخچه */
+  g2.fillStyle='rgba(143,216,232,.85)';
+  for(const p of pts){
+    if(p[1]===lastCarryM*YD&&p[0]===lastLatM*YD)continue;
+    g2.beginPath();g2.arc(cx0+p[0]*k,by-p[1]*k,1.6,0,7);g2.fill();
+  }
+  /* بیضی پراکندگی ۹۵٪ (mean±2sd) — §28 */
+  if(pts.length>=5){
+    const mx=pts.reduce((a,p)=>a+p[0],0)/pts.length,mc=pts.reduce((a,p)=>a+p[1],0)/pts.length;
+    const sx=Math.sqrt(pts.reduce((a,p)=>a+(p[0]-mx)*(p[0]-mx),0)/pts.length)*2;
+    const sc=Math.sqrt(pts.reduce((a,p)=>a+(p[1]-mc)*(p[1]-mc),0)/pts.length)*2;
+    g2.strokeStyle='rgba(255,255,255,.5)';
+    g2.beginPath();g2.ellipse(cx0+mx*k,by-mc*k,Math.max(6,sx*k),Math.max(8,sc*k),0,0,7);g2.stroke();
+  }
+  /* ضربه‌ی فعلی */
+  if(lastCarryM>0){
+    g2.strokeStyle='#7fe0b0';g2.lineWidth=2;
+    g2.beginPath();g2.moveTo(cx0,by);g2.lineTo(cx0+lastLatM*YD*k,by-lastCarryM*YD*k);g2.stroke();
+    g2.fillStyle='#fff';g2.beginPath();g2.arc(cx0+lastLatM*YD*k,by-lastCarryM*YD*k,2.6,0,7);g2.fill();
+  }
+}
+function updPanels(dt){
+  frameCount++;
+  const f=dt>0?1/dt:0;fpsEma=fpsEma?fpsEma*0.92+f*0.08:f;
+  const overlayOn=$('arOverlay').classList.contains('on')&&mode!=='none';
+  if(!overlayOn){
+    fpsChip.style.display='none';calibEl.style.display='none';statusEl.style.display='none';
+    pipeEl.style.display='none';mapWrap.style.display='none';calibDone=false;
+    return;
+  }
+  if(frameCount%12===0)fpsChip.textContent='≈'+Math.round(fpsEma)+' FPS · FRAME '+faNum(frameCount%100000).toString().replace(/\d/g,d=>'۰۱۲۳۴۵۶۷۸۹'[d]);
+  fpsChip.style.display='block';
+  if(phase==='detect'){
+    calibDone=false;
+    calibEl.style.display='block';
+    renderCalib(lastLumaAvg>0.03&&lastLumaAvg<0.985?3:2);
+    statusEl.style.display='none';pipeEl.style.display='none';mapWrap.style.display='none';
+  }else if(phase==='armed'){
+    if(!calibDone){calibDone=true;renderCalib(5);setTimeout(()=>{calibEl.style.display='none';},1300);}
+    statusEl.style.display='none';pipeEl.style.display='none';mapWrap.style.display='none';
+  }else if(phase==='track'){
+    calibEl.style.display='none';pipeEl.style.display='block';mapWrap.style.display='none';
+    statusEl.style.display='block';
+    if(frameCount%10===0){
+      const rows=[['IMPACT DETECTED',true],['CLUB HEAD TRACKED',clubSeen],['BALL TRACKED',lostN<6],['TRAJECTORY LOCKED',trail.length>18]];
+      statusEl.innerHTML='<div class="t">SHOT STATUS</div>'+rows.map(r=>'<div class="'+(r[1]?'ok':'')+'">'+(r[1]?'✓':'○')+' '+r[0]+'</div>').join('');
+    }
+  }else if(phase==='done'){
+    calibEl.style.display='none';statusEl.style.display='none';pipeEl.style.display='block';
+  }
+}
+
 /* ---------- حلقه‌ی اصلی ---------- */
 let lastTs=0;
 function loop(ts){
@@ -1751,10 +1852,12 @@ function loop(ts){
   const gray=new Float32Array(AW*AH);
   for(let i=0;i<AW*AH;i++){const j=i*4;gray[i]=(data[j]*0.4+data[j+1]*0.45+data[j+2]*0.15)/255;}
   lastGray=gray;if(!prevGray)prevGray=gray;
+  if(frameCount%15===0){let s=0,n=0;for(let i=0;i<gray.length;i+=97){s+=gray[i];n++;}lastLumaAvg=s/n;}
   if(phase==='detect')detectStep(gray);
   else if(phase==='armed'&&ball)armedStep(gray,data,dt);
   else if(phase==='track'&&ball)trackStep(gray,data,dt);
   drawHud();
+  updPanels(dt);
 }
 requestAnimationFrame(loop);
 
