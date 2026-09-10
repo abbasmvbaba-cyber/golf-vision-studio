@@ -706,61 +706,91 @@ function lockBallAt(bx,by,r){
   setPhase('armed');beep(880);
 }
 /* امتیاز توپ‌مانندی یک بلاب: کنتراست حلقه + گردی + اندازه‌ی معقول */
-function blobScore(sx,sy,n,minx,miny,maxx,maxy,peak){
+function blobScore(g,W,H,sx,sy,n,minx,miny,maxx,maxy,peak){
   const w=maxx-minx+1,h=maxy-miny+1;if(w<2||h<2)return null;
   const r=(w+h)/4,ar=w/h;
   const fill=n/(Math.PI*r*r);
-  const round=Math.max(0,1-Math.abs(ar-1))*clampN(fill/0.75,0,1);
+  const roundRaw=Math.max(0,1-Math.abs(ar-1))*clampN(fill/0.75,0,1);
+  const round=Math.max(r<4.5?0.5:0,roundRaw); /* توپِ دورِ ریز: نویز پیکسلی گردی را نفی نمی‌کند */
   let ringSum=0,ringCnt=0;const RR=Math.max(3,Math.round(r*1.8));
   for(let a=0;a<12;a++){
     const ax2=Math.round(sx+Math.cos(a/12*6.283)*RR),ay2=Math.round(sy+Math.sin(a/12*6.283)*RR);
-    if(ax2>0&&ay2>0&&ax2<AW&&ay2<AH){ringSum+=lastGray[ay2*AW+ax2];ringCnt++;}
+    if(ax2>0&&ay2>0&&ax2<W&&ay2<H){ringSum+=g[ay2*W+ax2];ringCnt++;}
   }
   const ring=ringCnt?ringSum/ringCnt:0.5;
   const contrast=clampN((peak-ring)*2.2,0,1);
-  const sizeOk=(r>=2&&r<=42)?1:0.12;
+  const sizeOk=(r>=1.5&&r<=42)?1:0.12;
   return {r:r,score:0.42*contrast+0.33*round+0.25*peak*sizeOk};
 }
-function manualLock(cxp,cyp){
-  if(!lastGray)return;
-  const SR=36; /* شعاع جستجوی دور لمس */
-  const x0=Math.max(1,Math.round(cxp-SR)),x1=Math.min(AW-2,Math.round(cxp+SR));
-  const y0=Math.max(1,Math.round(cyp-SR)),y1=Math.min(AH-2,Math.round(cyp+SR));
-  /* میانگین روشنایی محلی → آستانه‌ی تطبیقی */
+/* جستجوی بلاب توپ‌مانند دور نقطه‌ی لمس — روی هر بافت خاکستری (عمومی) */
+function smartBlobSearch(g,W,H,cxp,cyp,SR){
+  const x0=Math.max(1,Math.round(cxp-SR)),x1=Math.min(W-2,Math.round(cxp+SR));
+  const y0=Math.max(1,Math.round(cyp-SR)),y1=Math.min(H-2,Math.round(cyp+SR));
   let sum=0,cnt=0;
-  for(let y=y0;y<=y1;y+=2)for(let x=x0;x<=x1;x+=2){sum+=lastGray[y*AW+x];cnt++;}
+  for(let y=y0;y<=y1;y+=2)for(let x=x0;x<=x1;x+=2){sum+=g[y*W+x];cnt++;}
   const mean=sum/Math.max(1,cnt);
   const thr=clampN(mean+0.18,0.45,0.9);
-  const visited=new Uint8Array(AW*AH);
+  const visited=new Uint8Array(W*H);
   let best=null;
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
-    const i0=y*AW+x;
-    if(visited[i0]||lastGray[i0]<thr)continue;
+    const i0=y*W+x;
+    if(visited[i0]||g[i0]<thr)continue;
     const qx=[x],qy=[y];visited[i0]=1;
     let n=0,sx=0,sy=0,minx=x,maxx=x,miny=y,maxy=y,peak=0;
     while(qx.length&&n<=900){
       const cx2=qx.pop(),cy2=qy.pop();
       n++;sx+=cx2;sy+=cy2;
-      const lv=lastGray[cy2*AW+cx2];if(lv>peak)peak=lv;
+      const lv=g[cy2*W+cx2];if(lv>peak)peak=lv;
       if(cx2<minx)minx=cx2;if(cx2>maxx)maxx=cx2;
       if(cy2<miny)miny=cy2;if(cy2>maxy)maxy=cy2;
       for(let k=0;k<4;k++){
         const nx=cx2+(k===0?1:(k===1?-1:0)),ny=cy2+(k===2?1:(k===3?-1:0));
-        if(nx<1||ny<1||nx>=AW-1||ny>=AH-1)continue;
-        const ni=ny*AW+nx;
-        if(visited[ni]||lastGray[ni]<thr-0.12)continue;
+        if(nx<1||ny<1||nx>=W-1||ny>=H-1)continue;
+        const ni=ny*W+nx;
+        if(visited[ni]||g[ni]<thr-0.09)continue;
         visited[ni]=1;qx.push(nx);qy.push(ny);
       }
     }
-    if(n<4||n>900)continue; /* خیلی ریز یا خیلی بزرگ (دیوار/لباس) = توپ نیست */
-    const sc=blobScore(sx/n,sy/n,n,minx,miny,maxx,maxy,peak);
+    if(n<3||n>900)continue; /* بلاب‌های ریزِ توپِ دور مجازند؛ بزرگ‌ها (دیوار/لباس) رد */
+    const sc=blobScore(g,W,H,sx/n,sy/n,n,minx,miny,maxx,maxy,peak);
     if(!sc)continue;
     const distPen=1-Math.min(1,Math.hypot(sx/n-cxp,sy/n-cyp)/SR);
     const score=sc.score*0.86+0.14*distPen;
     if(!best||score>best.score)best={x:sx/n,y:sy/n,r:sc.r,score:score};
   }
-  if(best&&best.score>=0.30){lockBallAt(best.x,best.y,best.r);return;}
-  /* یاحتی اگر بلاب خوب نبود: نزدیک‌ترین بلابِ توپ‌مانند در محدوده، وگرنه روشن‌ترین نقطه */
+  return best;
+}
+/* لمس دقیق: برش ۱۲۸px از فریم اصلی دوربین (۴× ریزتر از بوم تحلیل) — توپ در ۱متر+ */
+const tapCv=document.createElement('canvas');tapCv.width=128;tapCv.height=128;
+const tapCx=tapCv.getContext('2d',{willReadFrequently:true});
+function precisionLock(cxp,cyp){
+  try{
+    if(mode!=='cam'||!vid.readyState||vid.readyState<2||!vid.videoWidth)return false;
+    const vw=vid.videoWidth,vh=vid.videoHeight;
+    const nx=cxp/AW*vw,ny=cyp/AH*vh;
+    const S=128;
+    const sx=clampN(Math.round(nx-S/2),0,Math.max(0,vw-S));
+    const sy=clampN(Math.round(ny-S/2),0,Math.max(0,vh-S));
+    tapCx.save();
+    if(facing==='user'){tapCx.translate(S,0);tapCx.scale(-1,1);}
+    tapCx.drawImage(vid,sx,sy,S,S,0,0,S,S);
+    tapCx.restore();
+    const d=tapCx.getImageData(0,0,S,S).data;
+    const g=new Float32Array(S*S);
+    for(let i=0;i<S*S;i++)g[i]=(d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114)/255;
+    const found=smartBlobSearch(g,S,S,nx-sx,ny-sy,48);
+    if(found&&found.score>=0.30){
+      lockBallAt(found.x/S*AW,found.y/S*AH,clampN(found.r*AW/vw,1.5,60));
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+function manualLock(cxp,cyp){
+  if(!lastGray)return;
+  if(precisionLock(cxp,cyp))return; /* اول رزولوشن اصلی — توپ دور */
+  const best=smartBlobSearch(lastGray,AW,AH,cxp,cyp,36);
+  if(best&&best.score>=0.28){lockBallAt(best.x,best.y,best.r);return;}
   if(best){lockBallAt(best.x,best.y,best.r);return;}
   let bl=0,bx=cxp,by=cyp;
   for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
@@ -773,7 +803,7 @@ function manualLock(cxp,cyp){
 let hintBall=null;
 function scanBallHint(){
   if(!lastGray)return null;
-  const thr=0.62;const visited=new Uint8Array(AW*AH);const cands=[];
+  const thr=0.55;const visited=new Uint8Array(AW*AH);const cands=[];
   for(let y=2;y<AH-2;y+=2)for(let x=2;x<AW-2;x+=2){
     const i0=y*AW+x;
     if(visited[i0]||lastGray[i0]<thr)continue;
@@ -793,8 +823,8 @@ function scanBallHint(){
         visited[ni]=1;qx.push(nx);qy.push(ny);
       }
     }
-    if(n<5||n>900)continue;
-    const sc=blobScore(sx/n,sy/n,n,minx,miny,maxx,maxy,peak);
+    if(n<3||n>900)continue;
+    const sc=blobScore(lastGray,AW,AH,sx/n,sy/n,n,minx,miny,maxx,maxy,peak);
     if(sc&&sc.score>0.48)cands.push({x:sx/n,y:sy/n,r:sc.r,score:sc.score});
   }
   cands.sort((a,b)=>b.score-a.score);
@@ -860,7 +890,7 @@ function trackStep(gray,data,dt){
   kfPredict(kf,dt);
   const px=kf.s[0],py=kf.s[1];
   const spd=Math.hypot(kf.s[2],kf.s[3]);
-  const R=clampN((ball.r||6)*2.6+spd*dt*2.2,(ball.r||6)*1.7,70);
+  const R=clampN((ball.r||6)*2.6+spd*dt*2.2,Math.max(7,(ball.r||6)*1.7),70);
   const seedL=(seedCol[0]*0.4+seedCol[1]*0.45+seedCol[2]*0.15)/255;
   const th=clampN(seedL*0.70,0.45,0.85);
   let best=-1e9,bx=-1,by=-1;
@@ -1335,7 +1365,7 @@ function loop(ts){
     ctx.save();ctx.direction='ltr';
     ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1.5;
     ctx.setLineDash([5,5]);
-    ctx.beginPath();ctx.arc(hintBall.x*SCX,hintBall.y*SCY,hintBall.r*Math.min(SCX,SCY)+5,0,7);ctx.stroke();
+    ctx.beginPath();ctx.arc(hintBall.x*SCX,hintBall.y*SCY,Math.max(9,hintBall.r*Math.min(SCX,SCY))+5,0,7);ctx.stroke();
     ctx.setLineDash([]);
     ctx.font='bold 10px Menlo,monospace';ctx.textAlign='center';
     ctx.fillStyle='rgba(255,255,255,.7)';
