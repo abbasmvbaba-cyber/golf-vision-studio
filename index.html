@@ -734,7 +734,8 @@ function detectStep(gray,data){
     if(!isFinite(diff)||diff<0.05)continue; /* بدون سایه = برق/انعکاس */
     const dcirc=(Math.min(bw,bh)/2)/r;      /* PATCH 2: دایره‌بودگی */
     if(dcirc<0.62||dcirc>1.45)continue;
-    const score=mean+diff*2.5+(1-Math.abs(dcirc-1))*0.5;
+    /* PATCH 43: بایاس زمین — توپ ایستاده پایین کادر است؛ سفیدیِ تنِ بازیکن (پیراهن/کیف) بر آن نمی‌برد */
+    const score=mean+diff*2.5+(1-Math.abs(dcirc-1))*0.5+(cy/AH)*0.55;
     if(!best||score>best.score)best={x:cx,y:cy,r,score};
   }
   if(!best){
@@ -800,7 +801,7 @@ function localBallCandidate(cxp,cyp){
       if(!isFinite(diff)||diff<0.05)continue;
       const dist=Math.hypot(cx-cxp,cy-cyp);
       if(dist>24)continue; /* لمس دقیقا خودِ توپ — کاندید دور رد */
-      const score=(mean+diff*2.5)*0.75+(1-dist/RR)*0.6;
+      const score=(mean+diff*2.5)*0.75+(1-dist/RR)*0.6+(cy/AH)*0.3;
       if(!best||score>best.score)best={x:cx,y:cy,r,score};
     }
     return best;
