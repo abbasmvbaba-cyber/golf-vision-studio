@@ -122,18 +122,13 @@ input[type=file]{display:none}
 .ar-flip .icn{width:23px;height:23px}
 #arFps{font-family:ui-monospace,Menlo,monospace;letter-spacing:2px}
 /* --- چیدمان: پنل‌ها پشت کنترل‌ها، بدون تداخل --- */
-#arOverlay .ar-glass,#arFps,#arPipeline{z-index:2}
 #arFps{top:calc(54px + env(safe-area-inset-top))}
-#arMapWrap{top:calc(292px + env(safe-area-inset-top));bottom:auto;right:12px}
 #arSummary{max-width:min(212px,54vw)}
 #arSummary .val{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.4px}
 #arSummary .hdr{font-family:ui-monospace,Menlo,monospace}
 .ar-glass{background:rgba(15,19,23,.74);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:14px}
 #arFps{position:absolute;top:calc(56px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:9.5px;letter-spacing:1.8px;color:rgba(220,240,246,.8);background:rgba(15,19,23,.55);padding:4px 10px;border-radius:99px;display:none;z-index:3;direction:ltr}
 #arCalib{position:absolute;top:calc(118px + env(safe-area-inset-top));left:12px;width:auto;max-width:70vw;padding:7px 13px;display:none;font-size:10px;letter-spacing:1.6px;color:#cfe4ec;z-index:2;direction:ltr;text-align:left;white-space:nowrap;font-family:Menlo,monospace;border-radius:99px}
-#arStatus .ok{color:#9fe8c8}
-#arMapWrap{position:absolute;bottom:calc(170px + env(safe-area-inset-bottom));right:12px;padding:9px 11px;display:none;z-index:3;direction:ltr}
-#arMap{display:block;width:118px;height:140px}
 #arSummary .hdr{font-size:9px;letter-spacing:1.8px;color:#9fe8c8;margin-bottom:5px;text-align:left;direction:ltr;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 #arSummary .row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:10.5px;line-height:1.85;direction:ltr;text-align:left;white-space:nowrap}
 #arSummary .lbl{color:#8fb5c2;letter-spacing:1.2px}
@@ -287,9 +282,6 @@ input[type=file]{display:none}
   </div>
   <span id="arFps"></span>
   <div id="arCalib" class="ar-glass"></div>
-  <div id="arStatus" class="ar-glass"></div>
-  <div id="arPipeline">VISION → TRACKING → PHYSICS → PREDICTION</div>
-  <div id="arMapWrap" class="ar-glass"><div class="t">3D TRAJECTORY</div><canvas id="arMap" width="118" height="140"></canvas></div>
   <button id="arThumb" class="ar-thumb"></button>
   <button id="arShutter" class="ar-shutter"><span></span></button>
   <button id="arFlip" class="ar-flip"><svg class="icn" viewBox="0 0 24 24"><use href="#i-flip"/></svg></button>
@@ -476,7 +468,7 @@ function stopAll(){
   vid.srcObject=null;demo=null;mode='none';
   ball=null;prevGray=null;prevCand=null;ballStable=0;trail=[];clubSeen=false;clubBox=null;
   $('arStBall').className='ar-chipic';$('arStClub').className='ar-chipic';
-  const hiders=['arFps','arCalib','arStatus','arPipeline','arMapWrap'];
+  const hiders=['arFps','arCalib'];
   hiders.forEach(id=>{const el=$(id);if(el)el.style.display='none';});
   calibDone=false;lastCarryM=0;
 }
@@ -1036,7 +1028,7 @@ function drawHud(){
 }
 
 /* ---------- پنل‌های پرمیوم: FPS/کالیبراسیون/وضعیت/مینی‌مپ (کانسپت) ---------- */
-const fpsChip=$('arFps'),calibEl=$('arCalib'),statusEl=$('arStatus'),pipeEl=$('arPipeline'),mapWrap=$('arMapWrap'),mapCv=$('arMap');
+const fpsChip=$('arFps'),calibEl=$('arCalib');
 const CAL_ITEMS=['CAMERA ALIGNMENT','LIGHTING','GROUND PLANE','BALL POSITION','TARGET LINE'];
 function updPanels(dt){
   frameCount++;
@@ -1044,8 +1036,7 @@ function updPanels(dt){
   const overlayOn=$('arOverlay').classList.contains('on')&&mode!=='none';
   $('arGear').classList.toggle('show',overlayOn);
   if(!overlayOn){
-    fpsChip.style.display='none';calibEl.style.display='none';statusEl.style.display='none';
-    pipeEl.style.display='none';mapWrap.style.display='none';calibDone=false;
+    fpsChip.style.display='none';calibEl.style.display='none';calibDone=false;
     $('arSettings').classList.remove('show');
     return;
   }
