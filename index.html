@@ -84,6 +84,10 @@ input[type=file]{display:none}
 .ar-dot.show{display:block}
 @keyframes arblink{50%{opacity:.15}}
 #arFlash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .35s;z-index:4}
+.ar-colors{position:absolute;top:calc(60px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));display:none;flex-direction:column;gap:10px;background:rgba(18,18,20,.82);padding:12px 9px;border-radius:99px;z-index:5}
+.ar-colors.show{display:flex}
+.ar-cdot{width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.3);cursor:pointer;padding:0;transition:transform .15s}
+.ar-cdot.on{border-color:#fff;transform:scale(1.18)}
 .ar-zoom{position:absolute;bottom:calc(172px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:3}
 .ar-zoom button{width:40px;height:40px;border-radius:50%;border:none;background:rgba(30,30,30,.6);color:#fff;font-size:12px;font-weight:700;cursor:pointer;transition:transform .15s}
 .ar-zoom button.on{background:rgba(0,0,0,.88);color:#ffd166;transform:scale(1.15)}
@@ -281,10 +285,12 @@ input[type=file]{display:none}
   <div class="ar-badge">⛳ AR</div>
   <div class="ar-topright">
     <span id="arStRec" class="ar-dot"></span>
+    <button id="arPal" class="ar-chipic" title="tracer color">🎨</button>
     <button id="arDemo" class="ar-chipic" title="demo">🎬</button>
     <span id="arStClub" class="ar-chipic">🥍</span>
     <span id="arStBall" class="ar-chipic">⛳</span>
   </div>
+  <div id="arColors" class="ar-colors"></div>
   <div id="arFlash"></div>
   <div class="ar-zoom" id="arZoom">
     <button data-z="1" class="on">1×</button>
@@ -1023,6 +1029,7 @@ let ball=null,ballStable=0,prevCand=null,pxPerMeter=80;
 let prevGray=null,clubSeen=false,clubBox=null;
 let vel={x:0,y:0},lostN=0,tImpact=0,trail=[],seedCol=[245,245,245];
 let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=false,lastGray=null;
+let tracerCol=(function(){try{return localStorage.getItem('golftar_c')||'#ff4d00';}catch(e){return '#ff4d00';}})(),impactCnt=0;
 let rec=null,chunks=[],clipUrl=null,lastMedia=null,beepCtx=null;
 
 function beep(f){
@@ -1091,7 +1098,7 @@ function startDemo(){
 }
 function resetShot(){
   ball=null;prevCand=null;ballStable=0;trail=[];prevGray=null;vel={x:0,y:0};
-  outN=0;lowRun=0;detectMiss=0;lowThr=false;clubSeen=false;clubBox=null;
+  outN=0;lowRun=0;detectMiss=0;lowThr=false;clubSeen=false;clubBox=null;impactCnt=0;
   setPhase('detect');
 }
 function syncZoomBtns(){
@@ -1212,6 +1219,7 @@ function detectStep(gray){
     pxPerMeter=clampN(diam/0.04267,12,4000);
     if(mode==='demo')pxPerMeter=1.4;
     ball={x:best.x,y:best.y,d:diam,r:best.r};
+    seedCol=sampleColor(best.x,best.y);
     vel={x:0,y:0};lostN=0;outN=0;lowRun=0;
     trail=[{x:best.x,y:best.y}];apexY=best.y;prevGray=gray;
     armGrace=performance.now()+450;
@@ -1234,6 +1242,7 @@ function manualLock(cxp,cyp){
   const r=clampN(Math.sqrt(cnt/Math.PI),2,60);
   pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
   ball={x:bx,y:by,d:r*2,r:r};
+  seedCol=sampleColor(bx,by);
   vel={x:0,y:0};lostN=0;outN=0;lowRun=0;trail=[{x:bx,y:by}];apexY=by;
   prevGray=lastGray;armGrace=performance.now()+450;
   setPhase('armed');beep(880);
@@ -1245,14 +1254,30 @@ function sampleColor(x,y){
   }catch(e){return[245,245,245];}
 }
 
-/* ---------- فاز ۲: منتظر ضربه ---------- */
-function armedStep(gray){
+/* ---------- فاز ۲: منتظر ضربه — تریگر فقط با جابه‌جایی خودِ توپ ---------- */
+function armedStep(gray,data,dt){
   const now=performance.now();
-  if(now<armGrace){prevGray=gray;return;} /* فرصت جا‌خالی کردن دست */
+  if(now<armGrace){prevGray=gray;return;}
+  /* جستجوی محلی خود توپ */
+  const seedL=(seedCol[0]*0.4+seedCol[1]*0.45+seedCol[2]*0.15)/255;
+  const th=clampN(seedL*0.75,0.4,0.8);
+  const R=Math.max(10,ball.r*2.2);
+  let best=-1e9,bx=-1,by=-1;
+  const x0=Math.max(1,Math.floor(ball.x-R)),x1=Math.min(AW-2,Math.ceil(ball.x+R));
+  const y0=Math.max(1,Math.floor(ball.y-R)),y1=Math.min(AH-2,Math.ceil(ball.y+R));
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+    const l=gray[y*AW+x];if(l<th)continue;
+    const j=(y*AW+x)*4;
+    const cs=1-(Math.abs(data[j]-seedCol[0])+Math.abs(data[j+1]-seedCol[1])+Math.abs(data[j+2]-seedCol[2]))/765;
+    const s=l*100+cs*40-Math.hypot(x-ball.x,y-ball.y)*1.2;
+    if(s>best){best=s;bx=x;by=y;}
+  }
+  const found=bx>=0&&Math.hypot(bx-ball.x,by-ball.y)<R;
+  /* حرکت کلی ناحیه (فقط برای کادر کلاب) */
   const RR=Math.max(20,ball.r*3);
   let moved=0,cnt=0,minx=1e9,maxx=-1,miny=1e9,maxy=-1;
-  const y0=Math.max(0,ball.y-RR),y1=Math.min(AH,ball.y+RR),x0=Math.max(0,ball.x-RR),x1=Math.min(AW,ball.x+RR);
-  for(let y=y0;y<y1;y+=2)for(let x=x0;x<x1;x+=2){
+  const my0=Math.max(0,ball.y-RR),my1=Math.min(AH,ball.y+RR),mx0=Math.max(0,ball.x-RR),mx1=Math.min(AW,ball.x+RR);
+  for(let y=my0;y<my1;y+=2)for(let x=mx0;x<mx1;x+=2){
     cnt++;
     if(Math.abs(gray[y*AW+x]-prevGray[y*AW+x])>0.12){
       moved++;
@@ -1262,17 +1287,27 @@ function armedStep(gray){
   const dens=moved/Math.max(1,cnt);
   if(dens>0.02&&!clubSeen){clubSeen=true;beep(660);setChips();}
   if(clubSeen&&moved>3)clubBox={x0:minx,y0:miny,x1:maxx,y1:maxy};
-  if(dens>0.06||(clubSeen&&dens>0.035)){
+  /* تریگر: توپ واقعاً جابه‌جا شده (۲ فریم پشت‌هم) یا انفجار حرکتِ شدید بدون تطابق */
+  const jump=found?Math.hypot(bx-ball.x,by-ball.y):0;
+  if(found&&jump>Math.max(3,ball.r*0.9))impactCnt++;
+  else if(!found&&dens>0.085)impactCnt++;
+  else impactCnt=0;
+  if(impactCnt>=2){
     tImpact=performance.now();
     trail=[{x:ball.x,y:ball.y}];
-    apexY=ball.y;distNow=0;lostN=0;outN=0;lowRun=0;vel={x:0,y:0};
-    seedCol=sampleColor(ball.x,ball.y);
+    if(found){
+      vel.x=(bx-ball.x)/Math.max(dt,0.001);vel.y=(by-ball.y)/Math.max(dt,0.001);
+      ball.x=bx;ball.y=by;
+    }else vel={x:0,y:0};
+    apexY=ball.y;distNow=0;lostN=0;outN=0;lowRun=0;lastSpd=0;
     startRec();setPhase('track');beep(1250);
+    prevGray=gray;return;
   }
+  if(found&&jump>1.2){ball.x=ball.x*0.5+bx*0.5;ball.y=ball.y*0.5+by*0.5;}
   prevGray=gray;
 }
 
-/* ---------- فاز ۳: ردیابی پرواز — مقاوم به گمشده‌ی کوتاه ---------- */
+/* ---------- فاز ۳: ردیابی پرواز — نرم، بدون زیگزاگ، بدون قطع زودهنگام ---------- */
 function trackStep(gray,data,dt){
   const spd=Math.hypot(vel.x,vel.y);
   const R=clampN(ball.r*2.6+spd*dt*2.2,ball.r*1.7,70);
@@ -1286,38 +1321,53 @@ function trackStep(gray,data,dt){
     const j=(y*AW+x)*4;
     const cs=1-(Math.abs(data[j]-seedCol[0])+Math.abs(data[j+1]-seedCol[1])+Math.abs(data[j+2]-seedCol[2]))/765;
     const dd=Math.hypot(x-ball.x,y-ball.y);
-    const s=l*100+cs*40-dd*1.2;
+    const s=l*100+cs*40-dd*1.6;
     if(s>best){best=s;bx=x;by=y;}
   }
   let matched=false;
-  if(bx>=0&&Math.hypot(bx-ball.x,by-ball.y)<R*1.05){
-    const iv=(bx-ball.x)/Math.max(dt,0.001),jv=(by-ball.y)/Math.max(dt,0.001);
-    vel.x=vel.x*0.35+iv*0.65;vel.y=vel.y*0.35+jv*0.65;
-    ball.x=bx;ball.y=by;
-    trail.push({x:bx,y:by});
-    if(trail.length>1200)trail.shift();
-    if(by<apexY)apexY=by;
-    lastSpd=Math.hypot(vel.x,vel.y)/pxPerMeter;
-    matched=true;
+  if(bx>=0){
+    const dxn=bx-ball.x,dyn=by-ball.y;
+    const vn=Math.hypot(vel.x,vel.y);
+    const dot=(dxn*vel.x+dyn*vel.y)/((Math.hypot(dxn,dyn)*vn)||1);
+    if(Math.hypot(dxn,dyn)>R*0.8&&vn>2&&dot<-0.5){
+      lostN++;ball.x+=vel.x*dt;ball.y+=vel.y*dt; /* پرش خلاف جهت پرواز = نویز */
+    }else if(Math.hypot(dxn,dyn)<Math.max(1,ball.r*0.22)){
+      matched=true;lostN=0;outN=0;lowRun=0; /* زیرپیکسل — همان جا */
+    }else{
+      const iv=dxn/Math.max(dt,0.001),jv=dyn/Math.max(dt,0.001);
+      vel.x=vel.x*0.70+iv*0.30;vel.y=vel.y*0.70+jv*0.30; /* نرم‌سازی سرعت */
+      ball.x=bx;ball.y=by;matched=true;lostN=0;outN=0;lowRun=0;
+      const lp=trail[trail.length-1];
+      if(Math.hypot(bx-lp.x,by-lp.y)>Math.max(0.8,ball.r*0.12)){
+        trail.push({x:bx,y:by});
+        if(trail.length>1200)trail.shift();
+      }
+      if(by<apexY)apexY=by;
+      lastSpd=Math.hypot(vel.x,vel.y)/pxPerMeter;
+    }
   }else{
     lostN++;
-    ball.x+=vel.x*dt;ball.y+=vel.y*dt; /* ادامه با پیش‌بینی */
-  }
-  if(matched){lostN=0;outN=0;}
-  else{
+    ball.x+=vel.x*dt;ball.y+=vel.y*dt;
     if(ball.x<-8||ball.x>AW+8||ball.y<-8||ball.y>AH+8)outN++;
     if(lastSpd<0.09)lowRun+=dt;else lowRun=0;
   }
   distNow=Math.hypot(ball.x-trail[0].x,(ball.y-trail[0].y)*0.35)/pxPerMeter;
   const el=(performance.now()-tImpact)/1000;
-  /* پایان فقط در این حالت‌ها: */
-  if(outN>50){finishShot(el,'out');return;}          /* توپ از کادر خارج شد (~۱ ثانیه) */
-  if(lostN>90){finishShot(el,'lost');return;}        /* ۱.۵ ثانیه کامل گم شد */
-  if(el>2.5&&lowRun>1.3){finishShot(el,'stop');return;} /* ۱.۳ ثانیه بی‌حرکت */
+  if(outN>50){finishShot(el,'out');return;}
+  if(lostN>90){finishShot(el,'lost');return;}
+  if(el>2.5&&lowRun>1.3){finishShot(el,'stop');return;}
   if(el>18)finishShot(el,'time');
 }
 function finishShot(el,reason){
   if(phase!=='track')return;
+  /* تریگر کاذب: توپ تقریباً حرکت نکرده → بی‌صدا به انتظار برگرد */
+  if(reason==='stop'&&distNow*pxPerMeter<Math.max(3,ball.r*1.3)){
+    stopRec();
+    trail=[{x:ball.x,y:ball.y}];
+    tImpact=performance.now();lowRun=0;lostN=0;outN=0;impactCnt=0;
+    $('arShutter').classList.remove('rec');
+    return;
+  }
   setPhase('done');
   stopRec();
   try{setThumb(cv.toDataURL('image/jpeg',0.72));}catch(e){}
@@ -1363,6 +1413,56 @@ function stopRec(){
   rec=null;
 }
 
+/* ---------- Tracer تلویزیونی: نرم‌سازی + تک‌خطه با درخشش ---------- */
+function hexA(h,a){const n=parseInt(h.slice(1),16);return'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
+function smoothPts(pts,win){
+  if(pts.length<5)return pts.slice();
+  const out=[];
+  for(let i=0;i<pts.length;i++){
+    let sx=0,sy=0,n=0;
+    for(let j=Math.max(0,i-win);j<=Math.min(pts.length-1,i+win);j++){sx+=pts[j].x;sy+=pts[j].y;n++;}
+    out.push({x:sx/n,y:sy/n});
+  }
+  return out;
+}
+function tracePath(s){
+  ctx.beginPath();
+  ctx.moveTo(s[0].x*SCX,s[0].y*SCY);
+  for(let i=1;i<s.length-1;i++){
+    const mx=(s[i].x+s[i+1].x)/2*SCX,my=(s[i].y+s[i+1].y)/2*SCY;
+    ctx.quadraticCurveTo(s[i].x*SCX,s[i].y*SCY,mx,my);
+  }
+  const L=s[s.length-1];
+  ctx.lineTo(L.x*SCX,L.y*SCY);
+}
+function drawTracer(pts){
+  const s=smoothPts(pts,4);
+  if(s.length<2)return;
+  const lw=clampN((ball?ball.r:8)*SCX*0.55,4,13);
+  ctx.lineCap='round';ctx.lineJoin='round';
+  ctx.strokeStyle=hexA(tracerCol,0.22);ctx.lineWidth=lw*2.6;tracePath(s);ctx.stroke();
+  ctx.strokeStyle=hexA(tracerCol,0.45);ctx.lineWidth=lw*1.6;tracePath(s);ctx.stroke();
+  ctx.strokeStyle=tracerCol;ctx.lineWidth=lw;tracePath(s);ctx.stroke();
+}
+/* پالت رنگ tracer */
+(function(){
+  const COLS=['#ff4d00','#ffe600','#39d98a','#00e5ff','#ff4dd2','#ffffff','#4d79ff'];
+  const cw=$('arColors');
+  COLS.forEach(c=>{
+    const b=document.createElement('button');
+    b.className='ar-cdot'+(c===tracerCol?' on':'');
+    b.style.background=c;
+    b.onclick=()=>{
+      tracerCol=c;
+      try{localStorage.setItem('golftar_c',c);}catch(e){}
+      document.querySelectorAll('.ar-cdot').forEach(x=>x.classList.toggle('on',x===b));
+      cw.classList.remove('show');beep(700);
+    };
+    cw.appendChild(b);
+  });
+  $('arPal').onclick=()=>{cw.classList.toggle('show');beep(600);};
+})();
+
 /* ---------- HUD فقط-آیکون ---------- */
 function drawHud(){
   if(phase==='detect'&&prevCand){
@@ -1397,19 +1497,12 @@ function drawHud(){
     ctx.fillText('🥍',clubBox.x0*SCX+2,clubBox.y0*SCY-6);
   }
   if((phase==='track'||phase==='done')&&trail.length>1){
-    for(let i=1;i<trail.length;i++){
-      const f=i/trail.length;
-      ctx.strokeStyle='rgba(255,'+Math.round(59+150*f)+','+Math.round(48+54*f)+','+(0.3+0.7*f)+')';
-      ctx.lineWidth=1.5+3*f;
-      ctx.beginPath();
-      ctx.moveTo(trail[i-1].x*SCX,trail[i-1].y*SCY);
-      ctx.lineTo(trail[i].x*SCX,trail[i].y*SCY);
-      ctx.stroke();
-    }
+    drawTracer(trail);
     const lp=trail[trail.length-1];
-    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(lp.x*SCX,lp.y*SCY,5,0,7);ctx.fill();
-    ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=1.5;
-    ctx.beginPath();ctx.arc(lp.x*SCX,lp.y*SCY,9,0,7);ctx.stroke();
+    const br=Math.max(3,(ball?ball.r:6)*SCX*0.5);
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(lp.x*SCX,lp.y*SCY,br,0,7);ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(lp.x*SCX,lp.y*SCY,br+4,0,7);ctx.stroke();
     /* مسافت زنده‌ی افزایشی زیر توپ */
     const label='≈ '+faNum(distNow.toFixed(1))+' م';
     ctx.font='bold 17px Tahoma';
@@ -1471,7 +1564,7 @@ function loop(ts){
   for(let i=0;i<AW*AH;i++){const j=i*4;gray[i]=(data[j]*0.4+data[j+1]*0.45+data[j+2]*0.15)/255;}
   lastGray=gray;if(!prevGray)prevGray=gray;
   if(phase==='detect')detectStep(gray);
-  else if(phase==='armed'&&ball)armedStep(gray);
+  else if(phase==='armed'&&ball)armedStep(gray,data,dt);
   else if(phase==='track'&&ball)trackStep(gray,data,dt);
   drawHud();
 }
