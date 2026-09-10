@@ -1274,7 +1274,7 @@ function fmt(n,d){return faNum(Number(n).toFixed(d===undefined?0:d));}
 function renderStats(){
   const A=loadShots().filter(s=>s.carryM);
   const sum=$('statsSummary'),tb=$('statsTable');
-  if(!A.length){sum.innerHTML='<div class="small">هنوز ضربه‌ای ثبت نشده — از حالت دوربین چند ضربه بزن ⛳</div>';tb.innerHTML='';return;}
+  if(!A.length){sum.innerHTML='<div class="small">هنوز ضربه‌ای ثبت نشده — از حالت دوربین چند ضربه بزن</div>';tb.innerHTML='';return;}
   const car=A.map(s=>s.carryM);
   const med=median(car),best=Math.max(...car),safe=percentile(car,0.2);
   const mu=car.reduce((a,b)=>a+b,0)/car.length;
@@ -1282,7 +1282,7 @@ function renderStats(){
   const cons=Math.max(0,Math.round(100*(1-Math.min(1,sd/Math.max(med,0.01)))));
   const right=A.filter(s=>(s.shape||'').includes('→')).length,left=A.filter(s=>(s.shape||'').includes('←')).length;
   const cards=[
-    ['count',A.length+' ⛳','تعداد ضربه'],
+    ['count',String(A.length),'تعداد ضربه'],
     ['median',fmt(med*YD)+' yd','میانه کری'],
     ['safe',fmt(safe*YD)+' yd','Safe Distance (P20)'],
     ['best',fmt(best*YD)+' yd','بهترین کری'],
