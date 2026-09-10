@@ -570,7 +570,7 @@ function stickyRelock(){
       const r=clampN(Math.sqrt(cnt/Math.PI),2,60);
       pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
       ball={x:bx,y:by,d:r*2,r:r};
-      seedCol=sampleColor(bx,by);
+      seedCol=sampleColor(bx,by,Math.max(2,r*0.9));
       vel={x:0,y:0};lostN=0;outN=0;lowRun=0;kf=makeKF(bx,by,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;trail=[{x:bx,y:by}];apexY=by;
       prevGray=lastGray;armGrace=performance.now()+450;
       setPhase('armed');beep(880);
@@ -799,6 +799,7 @@ function localBallCandidate(cxp,cyp){
       const diff=mean-ring;
       if(!isFinite(diff)||diff<0.05)continue;
       const dist=Math.hypot(cx-cxp,cy-cyp);
+      if(dist>24)continue; /* لمس دقیقا خودِ توپ — کاندید دور رد */
       const score=(mean+diff*2.5)*0.75+(1-dist/RR)*0.6;
       if(!best||score>best.score)best={x:cx,y:cy,r,score};
     }
@@ -812,7 +813,7 @@ function lockBallAt(lx,ly,lr){
   if(stickyTimer){clearTimeout(stickyTimer);stickyTimer=null;}
   sticky=null;
   ball={x:lx,y:ly,d:r*2,r:r};
-  seedCol=sampleColor(lx,ly);
+  seedCol=sampleColor(lx,ly,Math.max(2,r*0.9));
   vel={x:0,y:0};lostN=0;outN=0;lowRun=0;kf=makeKF(lx,ly,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;trail=[{x:lx,y:ly}];apexY=ly;lmX=0;lmY=0;lmT=0;
   prevGray=lastGray;armGrace=performance.now()+450;
   setPhase('armed');beep(880);
@@ -836,8 +837,17 @@ function manualLock(cxp,cyp){
   }
   lockBallAt(bx,by,clampN(Math.sqrt(cnt/Math.PI),2,60));
 }
-function sampleColor(x,y){
+function sampleColor(x,y,rr){
   try{
+    if(lastData&&rr>0){ /* PATCH 41: میانگین دیسک — پایدار در برابر چرخش/نقش برجسته توپ */
+      const rw=Math.max(1,Math.round(rr));let R=0,G=0,B=0,n=0;
+      const cx=clampN(Math.round(x),0,AW-1),cy=clampN(Math.round(y),0,AH-1);
+      for(let dy=-rw;dy<=rw;dy++)for(let dx=-rw;dx<=rw;dx++){
+        const xx=clampN(cx+dx,0,AW-1),yy=clampN(cy+dy,0,AH-1);const j=(yy*AW+xx)*4;
+        R+=lastData[j];G+=lastData[j+1];B+=lastData[j+2];n++;
+      }
+      return[R/n,G/n,B/n];
+    }
     const d=ax.getImageData(clampN(Math.round(x),0,AW-1),clampN(Math.round(y),0,AH-1),1,1).data;
     return[d[0],d[1],d[2]];
   }catch(e){return[245,245,245];}
@@ -913,9 +923,9 @@ function trackStep(gray,data,dt){
   kfPredict(kf,dt);
   const px=kf.s[0],py=kf.s[1];
   const spd=Math.hypot(kf.s[2],kf.s[3]);
-  const R=clampN((ball.r||6)*2.6+spd*dt*2.2,Math.max(7,(ball.r||6)*1.7),70);
+  const R=clampN((ball.r||6)*2.6+spd*dt*3,Math.max(7,(ball.r||6)*1.7),95);
   const seedL=(seedCol[0]*0.4+seedCol[1]*0.45+seedCol[2]*0.15)/255;
-  const th=clampN(seedL*0.70,0.45,0.85);
+  const th=clampN(seedL*0.70,0.42,0.85);
   /* محاسبه‌ی حرکت موضعی در همسایگی توپ → تشخیص گذر کلاب */
   let moved=0,mcnt=0,mvx=0,mvy=0;
   const MR=Math.max(22,Math.round((ball.r||6)*4));
@@ -941,14 +951,14 @@ function trackStep(gray,data,dt){
   let best=-1e9,bx=-1,by=-1;
   const x0=Rx0,x1=Rx1,y0=Ry0,y1=Ry1;
   const ddW=clubShield.active?1.0:1.6; /* هنگام سپر: تعادل فاصله/روشایی — لبه‌ی کلاب نبرد */
-  const sThk=lowThr?0.30:0.24; /* سفیدِ واقعی — زمینه‌ی رنگی (پتو/چمن) هرگز کاندید نیست */
+  const sThk=lowThr?0.30:0.24; /* سفیدِ واقعی — بژ(0.268)/چمن هرگز رد نمی‌شوند؛ بلر اشباع را کم می‌کند نه زیاد */
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
     if(clubShieldBlocks(x,y))continue; /* پیکسل‌های ناحیه‌ی کلاب هیچ‌وقت کاندید نمی‌شوند */
     const l=gray[y*AW+x];if(l<th)continue;
     const j=(y*AW+x)*4;
     if(satOf(data,j)>sThk)continue; /* PATCH 40: باید خودِ توپ باشد، نه روشن‌ترین زمینه */
     const cs=1-(Math.abs(data[j]-seedCol[0])+Math.abs(data[j+1]-seedCol[1])+Math.abs(data[j+2]-seedCol[2]))/765;
-    if(cs<0.78)continue; /* رنگ خیلی دور از سفیدِ توپ = زمینه */
+    if(cs<0.78)continue; /* رنگ خیلی دور از ظاهر مرجع توپ = زمینه (بژ≈0.744) */
     const dd=Math.hypot(x-px,y-py);
     const s=l*100+cs*40-dd*ddW;
     if(s>best){best=s;bx=x;by=y;}
@@ -962,12 +972,17 @@ function trackStep(gray,data,dt){
     kfUpdate(kf,bx,by,Math.max(4,(ball.r||6)*(ball.r||6)));
     /* PATCH 40: هم‌جوشی سرعت — کالمن باید خود توپ را برسد نه پشت سرش بیفتد */
     const nowM=performance.now();
-    if(lmT>0){
+    if(lmT>0&&Math.hypot(bx-lmX,by-lmY)>0.5){ /* فقط جابه‌جایی واقعی */
       const idt=Math.max(0.004,(nowM-lmT)/1000);
       kf.s[2]=clampN(kf.s[2]*0.55+((bx-lmX)/idt)*0.45,-5000,5000);
       kf.s[3]=clampN(kf.s[3]*0.55+((by-lmY)/idt)*0.45,-5000,5000);
     }
     lmX=bx;lmY=by;lmT=nowM;
+    /* PATCH 41: ظاهر مرجع به‌روز می‌شود — توپ غلتان نقشش عوض می‌شود */
+    const jm2=(by*AW+bx)*4;
+    seedCol[0]=seedCol[0]*0.88+data[jm2]*0.12;
+    seedCol[1]=seedCol[1]*0.88+data[jm2+1]*0.12;
+    seedCol[2]=seedCol[2]*0.88+data[jm2+2]*0.12;
     matched=true;lostN=0;outN=0;lowRun=0;
     const nx=kf.s[0],ny=kf.s[1];
     const lp=trail[trail.length-1];
@@ -989,10 +1004,10 @@ function trackStep(gray,data,dt){
        بلافاصله بعد از سپر: گرم با شعاع بلند (توپ ممکن است دور رفته باشد) */
     const cool=performance.now()<clubShield.until+300;
     const lnE=cool?Math.min(lostN,4):lostN;
-    if(!clubShield.active&&lnE>=1&&lnE<=16&&px>20&&px<AW-20&&py>20&&py<AH-20){
-      const RR1=cool?200:Math.min(110,45+lnE*13),RR0=12; /* بعد از سپر: توپ دور شده — شعاع بلند */
+    if(!clubShield.active&&lnE>=1&&lnE<=40&&px>20&&px<AW-20&&py>20&&py<AH-20){
+      const RR1=cool?200:Math.min(lostN<=16?110:160,45+lostN*(lostN<=16?13:4)),RR0=12;
       let bb=-1e9,bx2=-1,by2=-1;
-      const stp=(lnE>4||RR1>110)?2:1;
+      const stp=(lostN>4||RR1>110)?2:1;
       const sx0=Math.max(1,Math.floor(px-RR1)),sx1=Math.min(AW-2,Math.ceil(px+RR1));
       const sy0=Math.max(1,Math.floor(py-RR1)),sy1=Math.min(AH-2,Math.ceil(py+RR1));
       for(let y2=sy0;y2<=sy1;y2+=stp)for(let x2=sx0;x2<=sx1;x2+=stp){
@@ -1002,7 +1017,7 @@ function trackStep(gray,data,dt){
         const l2=gray[y2*AW+x2];if(l2<th)continue;
         if(prevGray&&(l2-prevGray[y2*AW+x2])<0.05)continue;
         const j2=(y2*AW+x2)*4;
-        if(satOf(data,j2)>sThk)continue; /* PATCH 40: کاندید باید سفیدِ واقعی باشد */
+        if(satOf(data,j2)>(lowThr?0.32:0.26))continue; /* جستجوی باز = سخت‌گیری بیشتر */
         const cs2=1-(Math.abs(data[j2]-seedCol[0])+Math.abs(data[j2+1]-seedCol[1])+Math.abs(data[j2+2]-seedCol[2]))/765;
         if(cs2<0.78)continue;
         const s2=l2*70+cs2*60-dd2*(cool?0.05:0.55); /* بعد از سپر فاصله جریمه‌ی سنگین ندارد */
@@ -1029,7 +1044,10 @@ function trackStep(gray,data,dt){
   }
   trackMatched+=matched?1:0;
   trackTotal++;
-  distNow=Math.hypot(kf.s[0]-trail[0].x,(kf.s[1]-trail[0].y)*0.35)*XM()/pxPerMeter;
+  /* PATCH 41: مسافت زنده = انتگرال مسیر تصویر — پاتِ دورشونده (dy غالب) دیگر ۳برابر کم‌شماری نمی‌شود */
+  let pl=0;
+  for(let i=1;i<trail.length;i++)pl+=Math.hypot(trail[i].x-trail[i-1].x,trail[i].y-trail[i-1].y);
+  distNow=pl*XM()/pxPerMeter;
   prevGray=gray;
   const el=(performance.now()-tImpact)/1000;
   if(outN>50){finishShot(el,'out');return;}
@@ -1045,7 +1063,10 @@ function analyzeShot(reason){
   const early=obs.filter(o=>o.t-t0<0.55);
   if(early.length>=6){
     const fit=quadFit(early.map(o=>o.t-t0),early.map(o=>o.y));
-    if(fit&&fit.a>0.75){
+    const fitX=quadFit(early.map(o=>o.t-t0),early.map(o=>o.x));
+    /* PATCH 42: رول توپ (پات) هم انحنای کندی دارد — ولی در پرواز ax≈0. رول نباید کالیبراسیون گرانشی جعل کند */
+    const isFlight=fit&&fit.a>0.75&&(!fitX||Math.abs(fitX.a)*2<0.25*(fit.a*2));
+    if(isFlight){
       const gpx=fit.a*2; /* شتاب عمودی تصویر (px/s²) — سند §34 */
       const scaleG=gpx/PHYS.g; /* ½·(g·scale)·t² = y ⇒ scale = 2a/g (m/px) */
       if(!(scaleG>2&&scaleG<20000))return res; /* کالیبراسیون غیرمنطقی */
@@ -1100,6 +1121,17 @@ function analyzeShot(reason){
       }
     }
   }
+  /* PATCH 41: شات زمینی (پات) — پرواز ندارد: سرعت اولیه از LSQ + مسافت غلتِ اندازه‌گیری‌شده */
+  if(res.carryM===null&&obs.length>=6){
+    const seg=obs.filter(o=>o.t-t0<0.35);
+    if(seg.length>=5){
+      /* سرعت لحظه‌ی ضربه = b در برازش درجه۲ (رول کند می‌شود — شیب میانگین کم‌می‌دهد) */
+      const fx=quadFit(seg.map(o=>o.t-t0),seg.map(o=>o.x));
+      const fy=quadFit(seg.map(o=>o.t-t0),seg.map(o=>o.y));
+      if(fx&&fy)res.ballSpeedMps=Math.hypot(fx.b,fy.b)*XM()/pxPerMeter;
+    }
+    res.carryM=distNow;res.carryPred=false;res.calib='diam';res.conf=0.7;
+  }
   return res;
 }
 function finishShot(el,reason){
@@ -1129,7 +1161,7 @@ function finishShot(el,reason){
   /* سه سنجه‌ی اصلی همیشه روی کارت‌اند (§42: بدون داده → —) */
   rows.push(['BALL SPEED',A.ballSpeedMps?spdTxt(A.ballSpeedMps):'—','EST']);
   if(A.launchDeg!==null&&A.launchDeg!==undefined)rows.push(['LAUNCH',A.launchDeg.toFixed(1)+'°','EST']);
-  rows.push(['CARRY DISTANCE',A.carryM?(A.carryM.toFixed(1)+' '+SET.dist.toUpperCase()):'—','EST']);
+  rows.push(['CARRY DISTANCE',A.carryM?distTxt(A.carryM,1):'—',A.carryPred?'EST':'MEAS']);
   rows.push(['APEX HEIGHT',isFinite(apexM)?hTxt(apexM):'—','EST']);
   rows.push(['LATERAL',((lastLatM>=0?'+':'')+distTxt(Math.abs(lastLatM),1)),'EST']);
   rows.push(['LIVE','≈'+distTxt(distNow,1),'']);
@@ -1506,6 +1538,21 @@ function loop(ts){
   for(let i=0;i<AW*AH;i++){const j=i*4;gray[i]=(data[j]*0.4+data[j+1]*0.45+data[j+2]*0.15)/255;}
   lastGray=gray;lastData=data;if(!prevGray)prevGray=gray;
   if(frameCount%15===0){let s=0,n=0;for(let i=0;i<gray.length;i+=97){s+=gray[i];n++;}lastLumaAvg=s/n;}
+  /* PATCH 41: فریم تکراری ویدیو (۳۰fps روی ۶۰fps رندر) → کالمن بدون آپدیت رانش می‌کند؛ پردازش نشود
+     مقایسه با prevGray (آخرین فریم پردازش‌شده) — حساس به «موقعیت»، برخلاف جمع */
+  if(phase==='track'){
+    let same=true;
+    if(prevGray){for(let i=0;i<gray.length;i+=7){if(gray[i]!==prevGray[i]){same=false;break;}}}
+    if(same&&prevGray){
+      if(kf)kfPredict(kf,dt);
+      if(kf&&(kf.s[0]<-8||kf.s[0]>AW+8||kf.s[1]<-8||kf.s[1]>AH+8))outN++;
+      if(lastSpd<0.09)lowRun+=dt;
+      const elS=(performance.now()-tImpact)/1000;
+      if(outN>50){finishShot(elS,'out');return;}
+      if(elS>2.5&&lowRun>1.3){finishShot(elS,'stop');return;}
+      drawHud();updPanels(dt);return;
+    }
+  }
   if(phase==='detect')detectStep(gray,data);
   else if(phase==='armed'&&ball)armedStep(gray,data,dt);
   else if(phase==='track'&&ball)trackStep(gray,data,dt);
