@@ -1,5 +1,5 @@
 /* Golf Vision Studio — service worker (network-first برای همیشه تازه بودن سایت) */
-const CACHE = 'golf-ar-v4';
+const CACHE = 'golf-ar-v5';
 self.addEventListener('install', e => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
