@@ -123,14 +123,17 @@ input[type=file]{display:none}
 #arFps{font-family:ui-monospace,Menlo,monospace;letter-spacing:2px}
 /* --- چیدمان: پنل‌ها پشت کنترل‌ها، بدون تداخل --- */
 #arFps{top:calc(54px + env(safe-area-inset-top))}
-#arSummary{max-width:min(212px,54vw)}
+#arSummary .brand{display:flex;flex-direction:column;align-items:center;gap:5px;margin:0 0 8px}
+#arSummary .brand img{width:46px;height:46px;border-radius:11px;box-shadow:0 0 0 1px rgba(255,255,255,.18),0 6px 18px rgba(0,0,0,.4)}
+#arSummary .brand .bn{font-family:Menlo,monospace;font-size:9.5px;letter-spacing:3px;color:#9fe8c8}
+#arSummary .site{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.12);text-align:center;font-family:Menlo,monospace;font-size:10px;letter-spacing:3px;color:#8fd8e8}
 #arSummary .val{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.4px}
 #arSummary .hdr{font-family:ui-monospace,Menlo,monospace}
 .ar-glass{background:rgba(15,19,23,.74);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:14px}
 #arFps{position:absolute;top:calc(56px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:9.5px;letter-spacing:1.8px;color:rgba(220,240,246,.8);background:rgba(15,19,23,.55);padding:4px 10px;border-radius:99px;display:none;z-index:3;direction:ltr}
 #arCalib{position:absolute;top:calc(118px + env(safe-area-inset-top));left:12px;width:auto;max-width:70vw;padding:7px 13px;display:none;font-size:10px;letter-spacing:1.6px;color:#cfe4ec;z-index:2;direction:ltr;text-align:left;white-space:nowrap;font-family:Menlo,monospace;border-radius:99px}
 #arSummary .hdr{font-size:9px;letter-spacing:1.8px;color:#9fe8c8;margin-bottom:5px;text-align:left;direction:ltr;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-#arSummary .row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:10.5px;line-height:1.85;direction:ltr;text-align:left;white-space:nowrap}
+#arSummary .row{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:11.5px;line-height:1.95;direction:ltr;text-align:left;white-space:nowrap}
 #arSummary .lbl{color:#8fb5c2;letter-spacing:1.2px}
 #arSummary .val{color:#eef7fa;font-weight:600}
 #arSummary .tag{font-style:normal;font-size:7.5px;color:#8fd8e8;border:1px solid rgba(143,216,232,.4);padding:0 4px;border-radius:99px;margin-left:4px;vertical-align:1px}
@@ -167,7 +170,7 @@ input[type=file]{display:none}
 .ar-thumb.show{display:block}
 .ar-flip{position:absolute;bottom:calc(42px + env(safe-area-inset-bottom));right:calc(22px + env(safe-area-inset-right));width:52px;height:52px;border-radius:50%;border:none;background:rgba(40,40,40,.65);color:#fff;font-size:22px;cursor:pointer;z-index:3}
 .ar-icbtn{display:inline-flex;width:42px;height:42px;border-radius:50%;background:#173a2c;border:1px solid #2b6b50;color:#dff5ea;align-items:center;justify-content:center;font-size:18px;text-decoration:none;cursor:pointer;margin-top:10px}
-#arSummary{position:absolute;top:calc(118px + env(safe-area-inset-top));left:calc(10px + env(safe-area-inset-left));transform:none;background:rgba(10,10,12,.88);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 12px;color:#fff;text-align:left;max-width:min(212px,54vw);display:none;z-index:2;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+#arSummary{position:absolute;top:46%;left:50%;transform:translate(-50%,-50%);background:rgba(13,17,20,.78);border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:14px 18px 11px;color:#fff;text-align:left;max-width:min(300px,84vw);display:none;z-index:2;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 18px 50px rgba(0,0,0,.45);max-height:calc(100dvh - 310px);overflow:auto}
 #arSummary.show{display:block}
 #arSummary .big{font-size:38px;font-weight:800;color:#ffd166}
 #arSummary .big small{font-size:16px;color:rgba(255,255,255,.7);font-weight:600}
@@ -312,6 +315,27 @@ window.addEventListener('resize',fitCanvas);fitCanvas();
 const anA=document.createElement('canvas');anA.width=AW;anA.height=AH;
 const ax=anA.getContext('2d',{willReadFrequently:true});
 const vid=$('arVideo');
+/* واترمارک برند — روی تمام ویدیوها و فریم‌ها */
+const wmImg=new Image();let wmOk=false;
+wmImg.onload=()=>{wmOk=true;};wmImg.src='appicon.png';
+function drawWM(){
+  if(!wmOk)return;
+  const s=cv.height*0.058,x=cv.width/2-s/2,y=cv.height*0.102,r=s*0.24;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);ctx.arcTo(x+s,y,x+s,y+s,r);ctx.arcTo(x+s,y+s,x,y+s,r);ctx.arcTo(x,y+s,x,y,r);ctx.arcTo(x,y,x+s,y,r);ctx.closePath();
+  ctx.clip();ctx.drawImage(wmImg,x,y,s,s);ctx.restore();
+  ctx.save();
+  ctx.strokeStyle='rgba(255,255,255,.3)';ctx.lineWidth=Math.max(1,cv.height*0.0016);
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);ctx.arcTo(x+s,y,x+s,y+s,r);ctx.arcTo(x+s,y+s,x,y+s,r);ctx.arcTo(x,y+s,x,y,r);ctx.arcTo(x,y,x+s,y,r);ctx.closePath();
+  ctx.stroke();
+  ctx.font='600 '+String(Math.max(9,Math.round(s*0.24)))+'px Menlo,monospace';
+  ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.93)';
+  ctx.shadowColor='rgba(0,0,0,.65)';ctx.shadowBlur=5;
+  ctx.fillText('P U T T C L U B . I R',cv.width/2,y+s+s*0.5);
+  ctx.restore();
+}
 let mode='none',stream=null,facing='environment';
 let demo=null,demoT=0;
 let phase='off'; /* off | detect | armed | track | done */
@@ -848,13 +872,14 @@ function finishShot(el,reason){
   rows.push(['LATERAL',((lastLatM>=0?'+':'')+distTxt(Math.abs(lastLatM),1)),'EST']);
   rows.push(['LIVE','≈'+distTxt(distNow,1),'']);
   rows.push(['TRACKING',conf+'%',conf>=85?'HIGH':'']);
-  let html='<div class="hdr">TRAJECTORY LOCKED ✓'+(A.shape&&A.shape!=='—'?' · '+A.shape:'')+'</div>';
+  let html='<div class="brand"><img src="appicon.png" alt=""/><span class="bn">PUTTCLUB VISION</span></div>';
+  html+='<div class="hdr">TRAJECTORY LOCKED ✓'+(A.shape&&A.shape!=='—'?' · '+A.shape:'')+'</div>';
   html+=rows.map(r=>'<div class="row"><span class="lbl">'+r[0]+'</span><span class="val">'+r[1]+(r[2]?'<i class="tag">'+r[2]+'</i>':'')+'</span></div>').join('');
   if(reason==='lost')html+='<div class="sub2" style="direction:ltr">✕ BALL LEFT FRAME</div>';
-  if(clipUrl)html+='<a class="ar-icbtn" href="'+clipUrl+'" download="golf-shot.webm"><svg class="icn" viewBox="0 0 24 24"><use href="#i-dl"/></svg></a>';
+  if(clipUrl)html+='<a class="ar-icbtn" style="margin-top:8px" href="'+clipUrl+'" download="puttclub-shot.'+(recMime.indexOf('mp4')>=0?'mp4':'webm')+'"><svg class="icn" viewBox="0 0 24 24"><use href="#i-dl"/></svg></a>';
+  html+='<div class="site">P U T T C L U B . I R</div>';
   $('arSummary').innerHTML=html;
-  $('arSummary').classList.add('show');
-  mapWrap.style.display='block';}
+  $('arSummary').classList.add('show');}
 
 /* لمس روی تصویر در حالت جستجو/مسلح = قفل دستی توپ */
 cv.addEventListener('pointerdown',e=>{
@@ -1083,6 +1108,7 @@ function loop(ts){
   requestAnimationFrame(loop);
   if(!$('arOverlay').classList.contains('on'))return;
   const dt=lastTs?Math.min(0.05,(ts-lastTs)/1000):0.016;lastTs=ts;
+  if(phase==='done'){updPanels(dt);return;} /* فریز آخرین فریم ضربه پشت کارت نتیجه */
   ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
   let ready=false;
   if(mode==='cam'&&vid.readyState>=2){
@@ -1108,6 +1134,7 @@ function loop(ts){
     ctx.drawImage(demo.canvas,(cv.width-640*dsc)/2,(cv.height-360*dsc)/2,640*dsc,360*dsc);
     ready=true;
   }
+  if(ready)drawWM();
   if(!ready){
     /* بوت‌اسکرین: حلقه‌ی اسکن چرخان + وضعیت (بدون ایموجی) */
     const t=ts/1000;
