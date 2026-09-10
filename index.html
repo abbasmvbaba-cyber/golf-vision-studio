@@ -281,6 +281,7 @@ input[type=file]{display:none}
     <div class="t">SETTINGS</div>
     <div class="sec"><div class="sl">DISTANCE UNIT</div><div class="opts" id="setDist"></div></div>
     <div class="sec"><div class="sl">HEIGHT UNIT</div><div class="opts" id="setHeight"></div></div>
+    <div class="sec"><div class="sl">BALL SPEED UNIT</div><div class="opts" id="setSpeed"></div></div>
     <div class="sec"><div class="sl">TRACER COLOR</div><div class="crow" id="setTCol"></div></div>
     <div class="sec"><div class="sl">DISTANCE LABEL COLOR</div><div class="crow" id="setLCol"></div></div>
     <div class="sec"><div class="sl">SCALE CORRECTION</div><div class="opts" id="setXcal"></div><div style="font-size:9px;color:#7d9a8b;font-family:Menlo,monospace;margin-top:4px;letter-spacing:.3px">IF DISTANCES FEEL SHORT → RAISE THIS · KEEP CAMERA 2-3M BEHIND BALL</div></div>
@@ -350,7 +351,7 @@ let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=f
 let kf=null,trackMatched=0,trackTotal=0,predPts=null;
 /* تنظیمات کاربر — واحدها و رنگ‌ها (ذخیره‌ی دائمی) */
 const SET=(function(){
-  const def={dist:'yd',height:'m',tracer:'#ff4d00',label:'#ffd166',xcal:1}; /* پیش‌فرض: مسافت یارد، ارتفاع متر */
+  const def={dist:'yd',height:'m',speed:'kmh',tracer:'#ff4d00',label:'#ffd166',xcal:1}; /* پیش‌فرض: مسافت یارد، ارتفاع متر */
   try{return Object.assign(def,JSON.parse(localStorage.getItem('golftar_set2')||'{}'));}catch(e){return def;}
 })();
 function saveSet(){try{localStorage.setItem('golftar_set2',JSON.stringify(SET));}catch(e){}}
@@ -359,6 +360,8 @@ const HEIGHTS={m:{n:'M',f:v=>v},yd:{n:'YD',f:v=>v*1.09361},ft:{n:'FT',f:v=>v*3.2
 function distTxt(m,dec){return (m*DISTS[SET.dist].k).toFixed(dec===undefined?1:dec)+' '+SET.dist.toUpperCase();}
 function hTxt(m){if(!isFinite(m))return '—';return (HEIGHTS[SET.height].f(m)||0).toFixed(1)+' '+SET.height.toUpperCase();}
 function XM(){return SET.xcal||1;}
+const SPEEDS={kmh:{n:'KM/H',k:3.6},mph:{n:'MPH',k:2.23694},ms:{n:'M/S',k:1}};
+function spdTxt(mps){if(!isFinite(mps)||!mps)return '—';const s=SPEEDS[SET.speed]||SPEEDS.kmh;return (mps*s.k).toFixed(1)+' '+s.n;}
 let tracerCol=SET.tracer,impactCnt=0;
 let frameCount=0,fpsEma=0,lastLumaAvg=0.5,calibDone=false,lastLatM=0,lastCarryM=0;
 let rec=null,chunks=[],clipUrl=null,lastMedia=null,beepCtx=null,recMime='',ac=null,micDst=null;
@@ -890,10 +893,11 @@ function finishShot(el,reason){
   lastLatM=A.latM||0;lastCarryM=A.carryM||distNow;
   /* تله‌متری حرفه‌ای — سند کانسپت (برچسب صداقت §42) */
   const rows=[];
-  if(A.ballSpeedMps)rows.push(['BALL SPEED',(A.ballSpeedMps*MPH).toFixed(1)+' MPH','EST']);
+  /* سه سنجه‌ی اصلی همیشه روی کارت‌اند (§42: بدون داده → —) */
+  rows.push(['BALL SPEED',A.ballSpeedMps?spdTxt(A.ballSpeedMps):'—','EST']);
   if(A.launchDeg!==null&&A.launchDeg!==undefined)rows.push(['LAUNCH',A.launchDeg.toFixed(1)+'°','EST']);
-  if(A.carryM)rows.push(['CARRY',lastCarryM.toFixed(1)+' '+SET.dist.toUpperCase(),'EST']);
-  rows.push(['APEX',isFinite(apexM)?hTxt(apexM):'—','EST']);
+  rows.push(['CARRY DISTANCE',A.carryM?(A.carryM.toFixed(1)+' '+SET.dist.toUpperCase()):'—','EST']);
+  rows.push(['APEX HEIGHT',isFinite(apexM)?hTxt(apexM):'—','EST']);
   rows.push(['LATERAL',((lastLatM>=0?'+':'')+distTxt(Math.abs(lastLatM),1)),'EST']);
   rows.push(['LIVE','≈'+distTxt(distNow,1),'']);
   rows.push(['TRACKING',conf+'%',conf>=85?'HIGH':'']);
@@ -1079,6 +1083,7 @@ function colRow(el,cands,cur,cb){
 function syncSettingsUI(){
   optRow($('setDist'),Object.keys(DISTS).map(k=>({v:k,n:DISTS[k].n})),SET.dist,v=>SET.dist=v);
   optRow($('setHeight'),Object.keys(HEIGHTS).map(k=>({v:k,n:HEIGHTS[k].n})),SET.height,v=>SET.height=v);
+  optRow($('setSpeed'),Object.keys(SPEEDS).map(k=>({v:k,n:SPEEDS[k].n})),SET.speed||'kmh',v=>SET.speed=v);
   colRow($('setTCol'),LCAND,SET.tracer,v=>{SET.tracer=v;tracerCol=v;});
   colRow($('setLCol'),LCAND,SET.label,v=>SET.label=v);
   optRow($('setXcal'),[{v:0.25,n:'×.25'},{v:0.5,n:'×.5'},{v:1,n:'×1'},{v:2,n:'×2'},{v:5,n:'×5'},{v:10,n:'×10'}],SET.xcal,v=>SET.xcal=parseFloat(v));
@@ -1279,7 +1284,7 @@ function renderHistory(){
     const d=new Date(s.t);
     const tm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+' · '+String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0');
     const carry=s.carryM?(s.carryM*YD).toFixed(0)+' yd':(s.dist?('≈'+s.dist.toFixed(1)+' m'):'—');
-    const bs=s.ballSpeedMps?('⚡'+(s.ballSpeedMps*MPH).toFixed(0)):'' ;
+    const bs=s.ballSpeedMps?('⚡'+(s.ballSpeedMps*(SPEEDS[SET.speed]||SPEEDS.kmh).k).toFixed(0)+' '+(SPEEDS[SET.speed]||SPEEDS.kmh).n):'';
     const la=s.launchDeg!==null&&s.launchDeg!==undefined?('📐'+s.launchDeg.toFixed(0)+'°'):'';
     return '<div class="hcard"><div class="top"><span class="carry">'+carry+'</span><span class="tm">'+tm+'</span></div>'
       +'<div class="row2">'+(s.shape?'<span class="shape">'+s.shape+'</span>':'')
@@ -1291,10 +1296,11 @@ $('histClear').onclick=()=>{if(confirm('همه‌ی تاریخچه پاک شود
 $('histCsv').onclick=e=>{
   e.preventDefault();
   const A=loadShots();if(!A.length)return;
-  const rows=['time,carry_m,carry_yd,ball_speed_mph,launch_deg,apex_m,shape,conf'].concat(A.map(s=>{
+  const rows=['time,carry_m,carry_yd,ball_speed_'+(SET.speed||'kmh')+',launch_deg,apex_m,shape,conf'].concat(A.map(s=>{
     const d=new Date(s.t);
     const tm=d.toISOString();
-    return [tm,(s.carryM||'').toString(),s.carryM?(s.carryM*YD).toFixed(1):'',s.ballSpeedMps?(s.ballSpeedMps*MPH).toFixed(1):'',s.launchDeg??'',s.apexM??'',s.shape||'',s.conf||0].join(',');
+    const sk=(SPEEDS[SET.speed]||SPEEDS.kmh).k;
+    return [tm,(s.carryM||'').toString(),s.carryM?(s.carryM*YD).toFixed(1):'',s.ballSpeedMps?(s.ballSpeedMps*sk).toFixed(1):'',s.launchDeg??'',s.apexM??'',s.shape||'',s.conf||0].join(',');
   }));
   const b=new Blob([rows.join('\n')],{type:'text/csv'});
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='puttclub-shots.csv';
@@ -1327,7 +1333,7 @@ function renderStats(){
     const d=new Date(s.t);
     const hh=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
     return '<tr><td>'+hh+'</td><td><b>'+fmt(s.carryM*YD)+'</b> yd</td><td>'+fmt(s.carryM,1)+' م</td>'
-      +'<td>'+(s.ballSpeedMps?fmt(s.ballSpeedMps*MPH)+' mph':'—')+'</td>'
+      +'<td>'+(s.ballSpeedMps?fmt(s.ballSpeedMps*(SPEEDS[SET.speed]||SPEEDS.kmh).k)+' '+(SPEEDS[SET.speed]||SPEEDS.kmh).n.toLowerCase():'—')+'</td>'
       +'<td>'+(s.launchDeg!==null&&s.launchDeg!==undefined?fmt(s.launchDeg)+'°':'—')+'</td>'
       +'<td>'+(s.shape||'—')+'</td><td>✔️'+fmt(s.conf||0)+'%</td></tr>';
   }).join('');
