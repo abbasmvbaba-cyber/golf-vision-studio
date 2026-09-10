@@ -304,7 +304,7 @@ const cv=$('arCanvas'),ctx=cv.getContext('2d');
 const AW=320,AH=180;let SCX=cv.width/AW,SCY=cv.height/AH;
 function fitCanvas(){
   const w=Math.max(1,window.innerWidth),h=Math.max(1,window.innerHeight);
-  const k=clampN(Math.min(2,Math.max(0.5,800/Math.max(w,h))),0.4,2);
+  const k=clampN(Math.min(2,Math.max(0.5,1080/Math.max(w,h))),0.4,2);
   cv.width=Math.round(w*k);cv.height=Math.round(h*k);
   SCX=cv.width/AW;SCY=cv.height/AH;
 }
@@ -551,13 +551,28 @@ $('arFlip').onclick=async()=>{
 function setThumb(url){
   const t=$('arThumb');t.style.backgroundImage='url("'+url+'")';t.classList.add('show');
 }
-$('arThumb').onclick=()=>{
+/* ذخیره در گالری: شیست اشتراک نیتیو iOS → Save to Photos (تنها مسیر مجاز وب) */
+async function shareOrSave(){
   if(!lastMedia)return;
   const url=lastMedia.url||lastMedia.poster;if(!url)return;
-  const a=document.createElement('a');a.href=url;
-  a.download=lastMedia.url?lastMedia.name:(lastMedia.name.replace(/\.\w+$/,'.jpg'));
-  document.body.appendChild(a);a.click();a.remove();
-};
+  const isVid=!!lastMedia.url;
+  try{
+    const blob=isVid?await(await fetch(url)).blob():await(await fetch(lastMedia.poster)).blob();
+    const type=blob.type||(isVid?'video/mp4':'image/jpeg');
+    const ext=type.indexOf('mp4')>=0?'mp4':(type.indexOf('webm')>=0?'webm':'jpg');
+    const file=new File([blob],'puttclub-shot.'+ext,{type:type});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:'PuttClub Vision'});
+      return; /* کاربر از شیست: Save Image / Save to Photos */
+    }
+  }catch(e){if(e&&e.name==='AbortError')return;}
+  try{
+    const a=document.createElement('a');a.href=url;
+    a.download=isVid?lastMedia.name:(lastMedia.name.replace(/\.\w+$/,'.jpg'));
+    document.body.appendChild(a);a.click();a.remove();
+  }catch(e){}
+}
+$('arThumb').onclick=()=>{beep(760);shareOrSave();};
 
 /* ---------- فاز ۱: شناسایی توپ — بلاب روشنِ گرد + حلقه‌ی تیره‌تر (مقیاس‌پذیر) ---------- */
 function detectStep(gray){
@@ -803,9 +818,10 @@ function finishShot(el,reason){
   if(phase!=='track')return;
   setPhase('done');
   stopRec();
-  let poster=null;try{poster=cv.toDataURL('image/jpeg',0.72);}catch(e){}
+  let poster=null;try{poster=cv.toDataURL('image/jpeg',0.92);}catch(e){}
   lastMedia={url:clipUrl,poster:poster,name:'puttclub-shot.'+(recMime.indexOf('mp4')>=0?'mp4':'webm')};
   try{if(poster)setThumb(poster);}catch(e){}
+  toast('کلیپ آماده شد — تامبنیل پایین را بزن → Save to Photos',5000);
   const flight=el||((performance.now()-tImpact)/1000);
   const apexM=trail.length?Math.max(0,trail[0].y-apexY)/pxPerMeter:0;
   const A=analyzeShot(reason);
@@ -854,10 +870,11 @@ cv.addEventListener('pointerdown',e=>{
 function startRec(){
   clipUrl=null;chunks=[];recMime='';
   try{
-    const stream=cv.captureStream(30);
+    const stream=cv.captureStream(60);
     const mimes=['video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
     for(const m of mimes){if(window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(m)){recMime=m;break;}}
-    rec=recMime?new MediaRecorder(stream,{mimeType:recMime}):new MediaRecorder(stream);
+    const opts=recMime?{mimeType:recMime,videoBitsPerSecond:12000000}:{videoBitsPerSecond:12000000};
+    rec=window.MediaRecorder?new MediaRecorder(stream,opts):new MediaRecorder(stream);
     rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
     rec.onstop=()=>{
       if(chunks.length){
