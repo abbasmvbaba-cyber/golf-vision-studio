@@ -1022,7 +1022,7 @@ let phase='off'; /* off | detect | armed | track | done */
 let ball=null,ballStable=0,prevCand=null,pxPerMeter=80;
 let prevGray=null,clubSeen=false,clubBox=null;
 let vel={x:0,y:0},lostN=0,tImpact=0,trail=[],seedCol=[245,245,245];
-let apexY=0,distNow=0,lastSpd=0;
+let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=false,lastGray=null;
 let rec=null,chunks=[],clipUrl=null,lastMedia=null,beepCtx=null;
 
 function beep(f){
@@ -1091,6 +1091,7 @@ function startDemo(){
 }
 function resetShot(){
   ball=null;prevCand=null;ballStable=0;trail=[];prevGray=null;vel={x:0,y:0};
+  outN=0;lowRun=0;detectMiss=0;lowThr=false;clubSeen=false;clubBox=null;
   setPhase('detect');
 }
 function syncZoomBtns(){
@@ -1153,46 +1154,89 @@ function snapshot(){
   }catch(e){}
 }
 
-/* ---------- فاز ۱: شناسایی توپ ---------- */
+/* ---------- فاز ۱: شناسایی توپ — بلاب روشنِ گرد + حلقه‌ی تیره‌تر (مقیاس‌پذیر) ---------- */
 function detectStep(gray){
+  const TH=lowThr?0.58:0.72;
+  const N=AW*AH;
+  const seen=new Uint8Array(N);
+  const qx=new Int32Array(N);
   let best=null;
-  for(let cy=8;cy<AH-8;cy+=2)for(let cx=8;cx<AW-8;cx+=2){
-    let core=0;
-    for(let dy=-1;dy<=1;dy++){const r0=(cy+dy)*AW+cx;core+=gray[r0-1]+gray[r0]+gray[r0+1];}
-    core/=9;
-    if(!(core>=0.72))continue;
-    let ring=0,n=0;
-    for(let k=0;k<10;k++){
-      const a=k*0.628;
-      const rx=Math.round(cx+Math.cos(a)*6),ry=Math.round(cy+Math.sin(a)*6);
+  for(let i=0;i<N;i++){
+    if(seen[i]||gray[i]<TH)continue;
+    let head=0,tail=0;qx[tail++]=i;seen[i]=1;
+    let cnt=0,sx=0,sy=0,sum=0,minx=AW,maxx=0,miny=AH,maxy=0;
+    while(head<tail&&cnt<=40000){
+      const p=qx[head++];const py=(p/AW)|0,px=p-py*AW;
+      cnt++;sx+=px;sy+=py;sum+=gray[p];
+      if(px<minx)minx=px;if(px>maxx)maxx=px;if(py<miny)miny=py;if(py>maxy)maxy=py;
+      if(px>0&&gray[p-1]>=TH&&!seen[p-1]){seen[p-1]=1;qx[tail++]=p-1;}
+      if(px<AW-1&&gray[p+1]>=TH&&!seen[p+1]){seen[p+1]=1;qx[tail++]=p+1;}
+      if(py>0&&gray[p-AW]>=TH&&!seen[p-AW]){seen[p-AW]=1;qx[tail++]=p-AW;}
+      if(py<AH-1&&gray[p+AW]>=TH&&!seen[p+AW]){seen[p+AW]=1;qx[tail++]=p+AW;}
+    }
+    if(cnt<10)continue;
+    const cx=sx/cnt,cy=sy/cnt;
+    const r=Math.sqrt(cnt/Math.PI);
+    if(r<1.6||r>75)continue;
+    const bw=maxx-minx+1,bh=maxy-miny+1;
+    if(bw/bh>2.4||bh/bw>2.4)continue;      /* کشیده = دست/چوب، نه توپ */
+    const fillTh=r<4?0.42:0.55;             /* توپ کوچک raster نرم‌تری دارد */
+    if(cnt/(bw*bh)<fillTh)continue;         /* توخالی/نامنظم = لباس */
+    const mean=sum/cnt;
+    if(mean<TH+0.02)continue;
+    const R=r*1.45+2;let ring=0,n=0;       /* حلقه در مقیاس خود توپ */
+    for(let k=0;k<16;k++){
+      const a=k*0.3927;
+      const rx=Math.round(cx+Math.cos(a)*R),ry=Math.round(cy+Math.sin(a)*R);
       if(rx<0||rx>=AW||ry<0||ry>=AH)continue;
       ring+=gray[ry*AW+rx];n++;
     }
-    if(n<8)continue;
-    ring/=n;
-    const diff=core-ring;
-    if(!isFinite(diff)||diff<0.16)continue;
-    const score=core+diff*2+(cy/AH)*0.5;
-    if(!best||score>best.score)best={x:cx,y:cy,score};
+    if(n<10)continue;ring/=n;
+    const diff=mean-ring;
+    if(!isFinite(diff)||diff<0.06)continue;  /* برق پوست/شیشه: حلقه هم روشن است */
+    const score=mean+diff*2.5+(cy/AH)*0.4;
+    if(!best||score>best.score)best={x:cx,y:cy,r,score};
   }
-  if(!best){prevCand=null;ballStable=0;return;}
-  if(prevCand&&Math.hypot(best.x-prevCand.x,best.y-prevCand.y)<3)ballStable++;
+  if(!best){
+    prevCand=null;ballStable=0;detectMiss++;
+    if(detectMiss>40&&!lowThr){lowThr=true;detectMiss=0;} /* صحنه تاریک: آستانه پایین */
+    return;
+  }
+  detectMiss=0;
+  const tol=Math.max(6,best.r*0.9);
+  if(prevCand&&Math.hypot(best.x-prevCand.x,best.y-prevCand.y)<tol)ballStable++;
   else ballStable=1;
   prevCand=best;
-  if(ballStable>=8){
-    let cnt=0;
-    for(let dy=-7;dy<=7;dy++)for(let dx=-7;dx<=7;dx++){
-      const yy=best.y+dy,xx=best.x+dx;
-      if(yy<0||yy>=AH||xx<0||xx>=AW)continue;
-      if(gray[yy*AW+xx]>0.6)cnt++;
-    }
-    const diam=Math.max(1.8,2*Math.sqrt(cnt/Math.PI));
+  if(ballStable>=5){
+    const diam=best.r*2;
     pxPerMeter=clampN(diam/0.04267,12,4000);
     if(mode==='demo')pxPerMeter=1.4;
-    ball={x:best.x,y:best.y,d:diam};
-    vel={x:0,y:0};lostN=0;trail=[];apexY=best.y;prevGray=gray;
+    ball={x:best.x,y:best.y,d:diam,r:best.r};
+    vel={x:0,y:0};lostN=0;outN=0;lowRun=0;
+    trail=[{x:best.x,y:best.y}];apexY=best.y;prevGray=gray;
+    armGrace=performance.now()+450;
     setPhase('armed');beep(880);
   }
+}
+/* قفل دستی: لمس صفحه روی هر جسمی */
+function manualLock(cxp,cyp){
+  if(!lastGray)return;
+  let bl=0,bx=cxp,by=cyp;
+  for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
+    const x=clampN(Math.round(cxp+dx),0,AW-1),y=clampN(Math.round(cyp+dy),0,AH-1);
+    const l=lastGray[y*AW+x];if(l>bl){bl=l;bx=x;by=y;}
+  }
+  let cnt=0;
+  for(let dy=-16;dy<=16;dy++)for(let dx=-16;dx<=16;dx++){
+    const x=clampN(bx+dx,0,AW-1),y=clampN(by+dy,0,AH-1);
+    if(lastGray[y*AW+x]>bl-0.28)cnt++;
+  }
+  const r=clampN(Math.sqrt(cnt/Math.PI),2,60);
+  pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
+  ball={x:bx,y:by,d:r*2,r:r};
+  vel={x:0,y:0};lostN=0;outN=0;lowRun=0;trail=[{x:bx,y:by}];apexY=by;
+  prevGray=lastGray;armGrace=performance.now()+450;
+  setPhase('armed');beep(880);
 }
 function sampleColor(x,y){
   try{
@@ -1203,9 +1247,11 @@ function sampleColor(x,y){
 
 /* ---------- فاز ۲: منتظر ضربه ---------- */
 function armedStep(gray){
-  const R=46;
+  const now=performance.now();
+  if(now<armGrace){prevGray=gray;return;} /* فرصت جا‌خالی کردن دست */
+  const RR=Math.max(20,ball.r*3);
   let moved=0,cnt=0,minx=1e9,maxx=-1,miny=1e9,maxy=-1;
-  const y0=Math.max(0,ball.y-R),y1=Math.min(AH,ball.y+R),x0=Math.max(0,ball.x-R),x1=Math.min(AW,ball.x+R);
+  const y0=Math.max(0,ball.y-RR),y1=Math.min(AH,ball.y+RR),x0=Math.max(0,ball.x-RR),x1=Math.min(AW,ball.x+RR);
   for(let y=y0;y<y1;y+=2)for(let x=x0;x<x1;x+=2){
     cnt++;
     if(Math.abs(gray[y*AW+x]-prevGray[y*AW+x])>0.12){
@@ -1214,65 +1260,86 @@ function armedStep(gray){
     }
   }
   const dens=moved/Math.max(1,cnt);
-  if(dens>0.015&&!clubSeen){
-    clubSeen=true;beep(660);setChips();
-  }
+  if(dens>0.02&&!clubSeen){clubSeen=true;beep(660);setChips();}
   if(clubSeen&&moved>3)clubBox={x0:minx,y0:miny,x1:maxx,y1:maxy};
-  if(dens>0.045){
+  if(dens>0.06||(clubSeen&&dens>0.035)){
     tImpact=performance.now();
     trail=[{x:ball.x,y:ball.y}];
-    apexY=ball.y;distNow=0;lostN=0;vel={x:0,y:0};
+    apexY=ball.y;distNow=0;lostN=0;outN=0;lowRun=0;vel={x:0,y:0};
     seedCol=sampleColor(ball.x,ball.y);
     startRec();setPhase('track');beep(1250);
   }
   prevGray=gray;
 }
 
-/* ---------- فاز ۳: ردیابی پرواز ---------- */
+/* ---------- فاز ۳: ردیابی پرواز — مقاوم به گمشده‌ی کوتاه ---------- */
 function trackStep(gray,data,dt){
-  const predX=ball.x+vel.x*dt,predY=ball.y+vel.y*dt;
-  const R=Math.min(64,Math.max(15,7+Math.hypot(vel.x,vel.y)*dt*2.6));
+  const spd=Math.hypot(vel.x,vel.y);
+  const R=clampN(ball.r*2.6+spd*dt*2.2,ball.r*1.7,70);
+  const seedL=(seedCol[0]*0.4+seedCol[1]*0.45+seedCol[2]*0.15)/255;
+  const th=clampN(seedL*0.70,0.45,0.85);
   let best=-1e9,bx=-1,by=-1;
-  const x0=Math.max(1,Math.floor(predX-R)),x1=Math.min(AW-2,Math.ceil(predX+R));
-  const y0=Math.max(1,Math.floor(predY-R)),y1=Math.min(AH-2,Math.ceil(predY+R));
+  const x0=Math.max(1,Math.floor(ball.x-R)),x1=Math.min(AW-2,Math.ceil(ball.x+R));
+  const y0=Math.max(1,Math.floor(ball.y-R)),y1=Math.min(AH-2,Math.ceil(ball.y+R));
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
-    const l=gray[y*AW+x];if(l<0.66)continue;
+    const l=gray[y*AW+x];if(l<th)continue;
     const j=(y*AW+x)*4;
     const cs=1-(Math.abs(data[j]-seedCol[0])+Math.abs(data[j+1]-seedCol[1])+Math.abs(data[j+2]-seedCol[2]))/765;
-    const dd=Math.hypot(x-predX,y-predY);
-    const s=l*100+cs*45-dd*1.4;
+    const dd=Math.hypot(x-ball.x,y-ball.y);
+    const s=l*100+cs*40-dd*1.2;
     if(s>best){best=s;bx=x;by=y;}
   }
-  if(bx>=0&&Math.hypot(bx-ball.x,by-ball.y)<R*1.15){
+  let matched=false;
+  if(bx>=0&&Math.hypot(bx-ball.x,by-ball.y)<R*1.05){
     const iv=(bx-ball.x)/Math.max(dt,0.001),jv=(by-ball.y)/Math.max(dt,0.001);
     vel.x=vel.x*0.35+iv*0.65;vel.y=vel.y*0.35+jv*0.65;
-    ball.x=bx;ball.y=by;lostN=0;
+    ball.x=bx;ball.y=by;
     trail.push({x:bx,y:by});
-    if(trail.length>900)trail.shift();
+    if(trail.length>1200)trail.shift();
     if(by<apexY)apexY=by;
     lastSpd=Math.hypot(vel.x,vel.y)/pxPerMeter;
+    matched=true;
   }else{
     lostN++;
-    ball.x=predX;ball.y=predY;
+    ball.x+=vel.x*dt;ball.y+=vel.y*dt; /* ادامه با پیش‌بینی */
+  }
+  if(matched){lostN=0;outN=0;}
+  else{
+    if(ball.x<-8||ball.x>AW+8||ball.y<-8||ball.y>AH+8)outN++;
+    if(lastSpd<0.09)lowRun+=dt;else lowRun=0;
   }
   distNow=Math.hypot(ball.x-trail[0].x,(ball.y-trail[0].y)*0.35)/pxPerMeter;
   const el=(performance.now()-tImpact)/1000;
-  if(lostN>15||el>12||(el>0.8&&lostN===0&&lastSpd<0.06))finishShot(el);
+  /* پایان فقط در این حالت‌ها: */
+  if(outN>50){finishShot(el,'out');return;}          /* توپ از کادر خارج شد (~۱ ثانیه) */
+  if(lostN>90){finishShot(el,'lost');return;}        /* ۱.۵ ثانیه کامل گم شد */
+  if(el>2.5&&lowRun>1.3){finishShot(el,'stop');return;} /* ۱.۳ ثانیه بی‌حرکت */
+  if(el>18)finishShot(el,'time');
 }
-function finishShot(el){
+function finishShot(el,reason){
   if(phase!=='track')return;
   setPhase('done');
   stopRec();
   try{setThumb(cv.toDataURL('image/jpeg',0.72));}catch(e){}
   const flight=el||((performance.now()-tImpact)/1000);
   const apexM=Math.max(0,trail[0].y-apexY)/pxPerMeter;
+  const why=reason==='out'?'↔️':(reason==='stop'?'🛑':(reason==='lost'?'❓':'⏱'));
   let html='<div class="big">'+faNum(distNow.toFixed(1))+'<small> م</small></div>';
-  html+='<div class="sub2">⏱ '+faNum(flight.toFixed(1))+' · ↑ '+faNum(apexM.toFixed(1))+' م</div>';
-  if(lostN>15)html+='<div class="sub2">⚠️</div>';
+  html+='<div class="sub2">⏱ '+faNum(flight.toFixed(1))+' · ↑ '+faNum(apexM.toFixed(1))+' م · '+why+'</div>';
   if(clipUrl)html+='<a class="ar-icbtn" href="'+clipUrl+'" download="golf-shot.webm">⬇</a>';
   $('arSummary').innerHTML=html;
   $('arSummary').classList.add('show');
 }
+
+/* لمس روی تصویر در حالت جستجو/مسلح = قفل دستی توپ */
+cv.addEventListener('pointerdown',e=>{
+  if(!$('arOverlay').classList.contains('on'))return;
+  if(phase!=='detect'&&phase!=='armed')return;
+  const rect=cv.getBoundingClientRect();
+  const px=(e.clientX-rect.left)*(cv.width/rect.width);
+  const py=(e.clientY-rect.top)*(cv.height/rect.height);
+  manualLock(px/SCX,py/SCY);
+});
 
 /* ---------- ضبط ویدیو ---------- */
 function startRec(){
@@ -1402,7 +1469,7 @@ function loop(ts){
   let data;try{data=ax.getImageData(0,0,AW,AH).data;}catch(e){return;}
   const gray=new Float32Array(AW*AH);
   for(let i=0;i<AW*AH;i++){const j=i*4;gray[i]=(data[j]*0.4+data[j+1]*0.45+data[j+2]*0.15)/255;}
-  if(!prevGray)prevGray=gray;
+  lastGray=gray;if(!prevGray)prevGray=gray;
   if(phase==='detect')detectStep(gray);
   else if(phase==='armed'&&ball)armedStep(gray);
   else if(phase==='track'&&ball)trackStep(gray,data,dt);
