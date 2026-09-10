@@ -1145,8 +1145,6 @@ let prevGray=null,clubSeen=false,clubBox=null;
 let vel={x:0,y:0},lostN=0,tImpact=0,trail=[],seedCol=[245,245,245];
 let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=false,lastGray=null;
 let kf=null,trackMatched=0,trackTotal=0,predPts=null;
-let tracerCol=SET.tracer,impactCnt=0;
-let frameCount=0,fpsEma=0,lastLumaAvg=0.5,calibDone=false,lastLatM=0,lastCarryM=0;
 /* تنظیمات کاربر — واحدها و رنگ‌ها (ذخیره‌ی دائمی) */
 const SET=(function(){
   const def={dist:'m',height:'m',tracer:'#ff4d00',label:'#ffd166'};
@@ -1157,6 +1155,8 @@ const DISTS={m:{n:'M',f:v=>v,k:1},yd:{n:'YD',f:v=>v*1.09361,k:1.09361},ft:{n:'FT
 const HEIGHTS={m:{n:'M',f:v=>v},yd:{n:'YD',f:v=>v*1.09361},ft:{n:'FT',f:v=>v*3.28084}};
 function distTxt(m,dec){return (m*DISTS[SET.dist].k).toFixed(dec===undefined?1:dec)+' '+SET.dist.toUpperCase();}
 function hTxt(m){return (m*HEIGHTS[SET.height].f).toFixed(1)+' '+SET.height.toUpperCase();}
+let tracerCol=SET.tracer,impactCnt=0;
+let frameCount=0,fpsEma=0,lastLumaAvg=0.5,calibDone=false,lastLatM=0,lastCarryM=0;
 let rec=null,chunks=[],clipUrl=null,lastMedia=null,beepCtx=null;
 
 /* ================= ماژول فیزیک (GolfPhysicsEngine) — سند §14-25 ================= */
