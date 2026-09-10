@@ -283,6 +283,7 @@ input[type=file]{display:none}
     <div class="sec"><div class="sl">HEIGHT UNIT</div><div class="opts" id="setHeight"></div></div>
     <div class="sec"><div class="sl">TRACER COLOR</div><div class="crow" id="setTCol"></div></div>
     <div class="sec"><div class="sl">DISTANCE LABEL COLOR</div><div class="crow" id="setLCol"></div></div>
+    <div class="sec"><div class="sl">SCALE CORRECTION</div><div class="opts" id="setXcal"></div><div style="font-size:9px;color:#7d9a8b;font-family:Menlo,monospace;margin-top:4px;letter-spacing:.3px">IF DISTANCES FEEL SHORT → RAISE THIS · KEEP CAMERA 2-3M BEHIND BALL</div></div>
     <div class="sec"><div class="sl">FULLSCREEN (iOS)</div><div style="font-size:9.5px;color:#7d9a8b;font-family:Menlo,monospace;letter-spacing:.4px">SAFARI · SHARE → ADD TO HOME SCREEN → OPEN FROM ICON = NO BROWSER BARS</div></div>
   </div>
   <span id="arFps"></span>
@@ -348,7 +349,7 @@ let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=f
 let kf=null,trackMatched=0,trackTotal=0,predPts=null;
 /* تنظیمات کاربر — واحدها و رنگ‌ها (ذخیره‌ی دائمی) */
 const SET=(function(){
-  const def={dist:'yd',height:'m',tracer:'#ff4d00',label:'#ffd166'}; /* پیش‌فرض: مسافت یارد، ارتفاع متر */
+  const def={dist:'yd',height:'m',tracer:'#ff4d00',label:'#ffd166',xcal:1}; /* پیش‌فرض: مسافت یارد، ارتفاع متر */
   try{return Object.assign(def,JSON.parse(localStorage.getItem('golftar_set2')||'{}'));}catch(e){return def;}
 })();
 function saveSet(){try{localStorage.setItem('golftar_set2',JSON.stringify(SET));}catch(e){}}
@@ -356,6 +357,7 @@ const DISTS={m:{n:'M',f:v=>v,k:1},yd:{n:'YD',f:v=>v*1.09361,k:1.09361},ft:{n:'FT
 const HEIGHTS={m:{n:'M',f:v=>v},yd:{n:'YD',f:v=>v*1.09361},ft:{n:'FT',f:v=>v*3.28084}};
 function distTxt(m,dec){return (m*DISTS[SET.dist].k).toFixed(dec===undefined?1:dec)+' '+SET.dist.toUpperCase();}
 function hTxt(m){if(!isFinite(m))return '—';return (HEIGHTS[SET.height].f(m)||0).toFixed(1)+' '+SET.height.toUpperCase();}
+function XM(){return SET.xcal||1;}
 let tracerCol=SET.tracer,impactCnt=0;
 let frameCount=0,fpsEma=0,lastLumaAvg=0.5,calibDone=false,lastLatM=0,lastCarryM=0;
 let rec=null,chunks=[],clipUrl=null,lastMedia=null,beepCtx=null,recMime='',ac=null,micDst=null;
@@ -791,7 +793,7 @@ function trackStep(gray,data,dt){
   }
   trackMatched+=matched?1:0;
   trackTotal++;
-  distNow=Math.hypot(kf.s[0]-trail[0].x,(kf.s[1]-trail[0].y)*0.35)/pxPerMeter;
+  distNow=Math.hypot(kf.s[0]-trail[0].x,(kf.s[1]-trail[0].y)*0.35)*XM()/pxPerMeter;
   const el=(performance.now()-tImpact)/1000;
   if(outN>50){finishShot(el,'out');return;}
   if(lostN>90){finishShot(el,'lost');return;}
@@ -814,8 +816,9 @@ function analyzeShot(reason){
       const scaleD=pxPerMeter;
       /* دو کالیبراسیون نزدیک باشند → اعتماد بالا */
       if(isFinite(scaleG)&&scaleG>0.05&&scaleG<6000){
+        /* کالیبراسیون گرانشی = مقیاس در عمق واقعی پرواز — همیشه معتبرتر از قطر توپِ نزدیک دوربین */
         res.calib=(Math.abs(scaleG-scaleD)/Math.max(scaleG,scaleD)<0.45)?'both':'grav';
-        pxPerMeter=reason==='lost'?scaleD:(scaleG*0.6+scaleD*0.4);
+        pxPerMeter=scaleG;
       }
       const ts=early.map(o=>o.t-t0),xs=early.map(o=>o.x);
       /* Least Squares خطی برای vx */
@@ -826,15 +829,16 @@ function analyzeShot(reason){
         const vxPx=(n*stx-st*sx)/dnm;
         const vyUpPx=-fit.b; /* y تصویر رو به پایین */
         const v0Px=Math.hypot(vxPx,vyUpPx);
-        res.ballSpeedMps=v0Px/pxPerMeter;
+        const xm=XM();
+        res.ballSpeedMps=v0Px*xm/pxPerMeter;
         res.launchDeg=Math.atan2(vyUpPx,Math.abs(vxPx))*180/Math.PI;
         /* کری با مدل درگ */
-        const sim=simCarry(vxPx/pxPerMeter,vyUpPx/pxPerMeter);
+        const sim=simCarry(vxPx*xm/pxPerMeter,vyUpPx*xm/pxPerMeter);
         res.carryM=sim.carry;res.carryPred=true;
         /* مسیر پیش‌بینی برای خط‌چین (بازگشت به پیکسل) */
         res.predPts=sim.pts.filter((p,i)=>i%6===0).slice(0,60).map(p=>({
-          x:obs[0].x+p[0]*pxPerMeter,
-          y:obs[0].y-p[1]*pxPerMeter
+          x:obs[0].x+p[0]*pxPerMeter/xm,
+          y:obs[0].y-p[1]*pxPerMeter/xm
         }));
         /* شکل ضربه از انحراف جانبی مشاهده‌شده (سند §26-27) */
         const last=obs[obs.length-1];
@@ -847,7 +851,7 @@ function analyzeShot(reason){
             if(Math.abs(d)>Math.abs(maxDev)){maxDev=d;devSign=Math.sign(d);}
           }
           const rPx=ball.r||6;
-          const latM=maxDev/pxPerMeter,latPct=res.carryM?Math.abs(latM)/res.carryM*100:0;
+          const latM=maxDev*XM()/pxPerMeter,latPct=res.carryM?Math.abs(latM)/res.carryM*100:0;
           res.latM=(devSign||0)*latM; /* §27 انحراف جانبی علامت‌دار (متر) */
           if(Math.abs(maxDev)<rPx*1.6)res.shape='STR';
           else if(latPct>9)res.shape=devSign>0?'SLICE→':'←HOOK';
@@ -867,7 +871,7 @@ function finishShot(el,reason){
   lastMedia=null;cardHtml=null;
   try{$('arThumb').classList.remove('show','pulse');}catch(e){}
   const flight=el||((performance.now()-tImpact)/1000);
-  const apexM=trail.length?Math.max(0,trail[0].y-apexY)/pxPerMeter:0;
+  const apexM=trail.length?Math.max(0,trail[0].y-apexY)*XM()/pxPerMeter:0;
   const A=analyzeShot(reason);
   const trackRatio=trackTotal?trackMatched/trackTotal:0;
   /* نمره اطمینان — سند §33 */
@@ -1067,6 +1071,7 @@ function syncSettingsUI(){
   optRow($('setHeight'),Object.keys(HEIGHTS).map(k=>({v:k,n:HEIGHTS[k].n})),SET.height,v=>SET.height=v);
   colRow($('setTCol'),LCAND,SET.tracer,v=>{SET.tracer=v;tracerCol=v;});
   colRow($('setLCol'),LCAND,SET.label,v=>SET.label=v);
+  optRow($('setXcal'),[{v:0.25,n:'×.25'},{v:0.5,n:'×.5'},{v:1,n:'×1'},{v:2,n:'×2'},{v:5,n:'×5'},{v:10,n:'×10'}],SET.xcal,v=>SET.xcal=parseFloat(v));
 }
 syncSettingsUI();
 $('arGear').onclick=()=>{
