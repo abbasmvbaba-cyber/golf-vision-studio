@@ -1,0 +1,920 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Golf Vision Studio | گلف ویژن استودیو</title>
+<meta name="description" content="تحلیل ضربه گلف در مرورگر: ردیابی مسیر توپ (Shot Tracer)، ضبط خودکار ضربه و فیزیک خواندن گرین — همه در یک فایل HTML بدون سرور."/><meta property="og:title" content="⛳ Golf Vision Studio — گلف ویژن استودیو"/><meta property="og:description" content="ردیابی مسیر توپ گلف، ضبط خودکار سوئینگ و حل‌کننده فیزیک پات — کاملاً داخل مرورگر."/><meta property="og:type" content="website"/><meta name="theme-color" content="#0b1210"/><link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⛳</text></svg>"/>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Vazirmatn,Tahoma,"Segoe UI",sans-serif;background:#0b1210;color:#e8f3ec}
+a{color:#39d98a}
+header{padding:18px 22px 12px;border-bottom:1px solid #1f2e27;background:linear-gradient(180deg,#0f1a15,#0b1210)}
+h1{margin:0;font-size:21px}
+.sub{color:#9db8aa;font-size:13px;margin-top:6px;line-height:1.9}
+.chips{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.chip{font-size:12px;padding:3px 10px;border-radius:99px;border:1px solid #24493a;background:#0f241b;color:#9db8aa}
+.chip.ok{color:#39d98a;border-color:#1f5c41}
+.chip.warn{color:#ffd166;border-color:#6b5a1f}
+.chip.err{color:#ff7b7b;border-color:#6b2a2a}
+nav{display:flex;gap:6px;padding:10px 18px;border-bottom:1px solid #1f2e27;position:sticky;top:0;background:#0c1512f2;z-index:5;flex-wrap:wrap}
+nav button{background:#10231b;border:1px solid #1f4a38;color:#cfe8da;padding:8px 14px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:13px}
+nav button.on{background:#173a2c;color:#fff;border-color:#39d98a}
+main{padding:18px;max-width:1180px;margin:0 auto}
+.tab{display:none}.tab.on{display:block}
+.panel{background:#121b17;border:1px solid #1f2e27;border-radius:14px;padding:14px;margin-bottom:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.act{background:#173a2c;border:1px solid #2b6b50;color:#dff5ea;padding:7px 12px;border-radius:9px;cursor:pointer;font-size:13px;font-family:inherit;text-decoration:none;display:inline-block}
+.act:hover{background:#1c4a37}
+.act.primary{background:#1f6b47;border-color:#39d98a}
+.act.on{background:#2b6b50;color:#fff}
+select{background:#0f1a15;border:1px solid #2b6b50;color:#dff5ea;border-radius:9px;padding:6px 8px;font-size:13px;font-family:inherit}
+.grid2{display:grid;grid-template-columns:1fr 320px;gap:14px}
+@media(max-width:920px){.grid2{grid-template-columns:1fr}}
+.canvasWrap{background:#08100d;border:1px solid #1f2e27;border-radius:12px;padding:10px}
+canvas.disp{width:100%;height:auto;display:block;border-radius:8px;background:#000;cursor:crosshair}
+.controls{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+input[type=range]{flex:1;min-width:110px;accent-color:#39d98a}
+label.ck{display:flex;gap:6px;align-items:center;font-size:13px;color:#cfe8da;margin:4px 0;cursor:pointer}
+.note{font-size:12px;color:#8aa898;line-height:2;margin-top:8px}
+.toast{position:fixed;bottom:18px;right:50%;transform:translateX(50%);background:#173a2c;border:1px solid #39d98a;color:#eafff4;padding:10px 18px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:99;max-width:92vw;text-align:center}
+.toast.show{opacity:1}
+.clip{display:flex;gap:10px;align-items:center;background:#0f1a15;border:1px solid #1f2e27;border-radius:10px;padding:8px;margin-top:8px;flex-wrap:wrap}
+.clip video{width:190px;border-radius:8px;background:#000}
+.sliderRow{display:grid;grid-template-columns:120px 1fr 78px;gap:8px;align-items:center;font-size:13px;margin:8px 0}
+.sliderRow output{color:#ffd166;text-align:left}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
+th,td{border:1px solid #1f2e27;padding:7px 9px;text-align:right;vertical-align:top;line-height:1.8}
+th{background:#0f1a15;color:#9fe3c0}
+.techgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;margin-top:12px}
+.tcard{background:#0f1a15;border:1px solid #1f2e27;border-radius:12px;padding:12px 14px;font-size:13px;line-height:2}
+.tcard h3{margin:0 0 6px;font-size:14px;color:#39d98a}
+h2{font-size:17px;margin:4px 0 12px}
+.stat{display:flex;justify-content:space-between;padding:6px 4px;border-bottom:1px dashed #1c2b24;font-size:13px}
+.stat b{color:#ffd166;font-weight:600}
+.log{font-size:12px;color:#9db8aa;max-height:140px;overflow:auto;margin:6px 0 0;padding:0;list-style:none}
+.log li{padding:3px 0;border-bottom:1px dashed #16211c}
+.small{font-size:12px;color:#8aa898}
+footer{padding:16px 22px;color:#5f7a6d;font-size:12px;border-top:1px solid #1f2e27;margin-top:20px;text-align:center;line-height:2}
+input[type=file]{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>⛳ گلف ویژن استودیو</h1>
+  <div class="sub">نمونه‌ی عملیِ فناوری‌های هسته‌ی اپ‌های حرفه‌ای گلف — ردیابی توپ (Shot Tracer)، ضبط خودکار ضربه (Swing Profile)، اسکلت بدن (Sportsbox) و فیزیک خواندن گرین (PuttView) — همه‌ی پردازش‌ها داخل مرورگر تو انجام می‌شود.</div>
+  <div class="chips">
+    <span id="chipEngine" class="chip ok">موتور ردیابی: آماده ✔</span>
+    <span id="chipPose" class="chip">اسکلت بدن: خاموش</span>
+    <span id="chipCam" class="chip">دوربین: —</span>
+  </div>
+</header>
+
+<nav data-tabs>
+  <button class="on" data-tab="trace">✨ ردیاب ضربه</button>
+  <button data-tab="cap">🤖 ضبط خودکار</button>
+  <button data-tab="green">🧭 خواندن گرین</button>
+  <button data-tab="tech">🧠 تکنولوژی‌ها</button>
+</nav>
+
+<main>
+<!-- ============ تب ۱: ترِیسِر ============ -->
+<section id="tab-trace" class="tab on">
+  <div class="row" style="margin-bottom:12px">
+    <button id="btnDemoDrive" class="act primary">⛳ دموی درایو (سینتِتیک)</button>
+    <button id="btnDemoPutt" class="act primary">🏌️ دموی پات (استروب)</button>
+    <button id="btnUp" class="act">📹 آپلود ویدیوی خودت</button>
+    <input type="file" id="fileUp" accept="video/*"/>
+  </div>
+  <div class="grid2">
+    <div class="canvasWrap">
+      <canvas id="cvTrace" class="disp" width="960" height="540"></canvas>
+      <div class="controls">
+        <button id="btnPlay" class="act">▶ پخش</button>
+        <input type="range" id="scrub" min="0" max="1000" value="0"/>
+        <select id="speedSel">
+          <option value="1">سرعت ۱×</option>
+          <option value="0.5">۰.۵×</option>
+          <option value="0.25">۰.۲۵×</option>
+          <option value="0.1">اسلوموشن ۰.۱×</option>
+        </select>
+      </div>
+      <div class="controls">
+        <button id="btnSeed" class="act">🎯 قفل توپ (کلیک روی توپ)</button>
+        <button id="btnClearTrail" class="act">🧹 پاک‌کردن مسیر</button>
+        <select id="selStyle">
+          <option value="line">خط پیوسته (TV)</option>
+          <option value="strobe">استروب (نقطه‌ای)</option>
+        </select>
+        <button id="btnExport" class="act">⬇ خروجی ویدیو</button>
+      </div>
+      <div class="note">
+        💡 برای ویدیوی واقعی: گوشی را ثابت نگه دار (سه‌پایه)، ویدیو را آپلود کن، دکمه‌ی «قفل توپ» را بزن و روی توپ کلیک کن — موتور ردیابی بقیه‌ی مسیر را خودش دنبال می‌کند (همان ایده‌ی Shot Tracer). بهترین نتیجه با پس‌زمینه‌ی یکدست و توپِ روشن است.
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2 style="font-size:14px">📊 آمار تخمینی ضربه</h2>
+        <div class="stat"><span>نقاط ردیابی‌شده</span><b id="statPts">0</b></div>
+        <div class="stat"><span>زمان پرواز</span><b id="statFlight">—</b></div>
+        <div class="stat"><span>اوج ارتفاع</span><b id="statApex">—</b></div>
+        <div class="stat"><span>شکل مسیر</span><b id="statCurve">—</b></div>
+        <div class="stat"><span>زاویه زانو (اسکلت)</span><b id="statKnee">—</b></div>
+        <div class="stat"><span>تمپوی تنه (اسکلت)</span><b id="statSpine">—</b></div>
+        <div class="note">ارتفاع و انحنا بر حسب پیکسل تخمین زده می‌شود؛ برای متر واقعی به نقطه‌ی مرجع (مثلاً فاصله تا پرچم) نیاز است.</div>
+      </div>
+      <div class="panel">
+        <h2 style="font-size:14px">⚙️ موتورها</h2>
+        <label class="ck"><input type="checkbox" id="ckTracker" checked/> ردیابی خودکار توپ</label>
+        <label class="ck"><input type="checkbox" id="ckPose"/> اسکلت بدن — ۳۳ نقطه (نیاز به اینترنت، مثل Sportsbox AI)</label>
+        <ul id="logTrace" class="log"></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ تب ۲: ضبط خودکار ============ -->
+<section id="tab-cap" class="tab">
+  <div class="row" style="margin-bottom:12px">
+    <button id="btnCam" class="act primary">📷 دوربین زنده</button>
+    <button id="btnCapFile" class="act">📹 آپلود ویدیو</button>
+    <input type="file" id="fileCap" accept="video/*"/>
+    <span class="small">حالت فعلی: <b id="capModeLbl" style="color:#ffd166">دموی تمرین (هر ۴ ثانیه یک سوئینگ)</b></span>
+  </div>
+  <div class="grid2">
+    <div class="canvasWrap">
+      <canvas id="cvCap" class="disp" width="640" height="360" style="cursor:default"></canvas>
+      <canvas id="cvMeter" width="600" height="64" style="width:100%;height:64px;margin-top:10px;border-radius:8px;background:#08100d;border:1px solid #1f2e27"></canvas>
+      <div class="controls">
+        <span class="small" style="min-width:150px">آستانه‌ی تشخیص حرکت</span>
+        <input type="range" id="thr" min="2" max="25" step="0.5" value="7"/>
+        <output id="thrV">7</output>
+      </div>
+      <div class="note">
+        🤖 این همان تکنیک <b>Swing Profile / OnForm</b> است: گوشی ثابت، دوربین باز، و موتور «تفاضل فریم» لحظه‌ی ضربه را تشخیص می‌دهد، خودش ضبط را شروع و بعد از سکون قطع می‌کند و کلیپ آماده‌ی پخش می‌شود. در پیش‌نمایش داخلی دوربین مجاز نیست — فایل را دانلود کن و در کروم (کامپیوتر یا گوشی) باز کن تا دوربین زنده کار کند.
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2 style="font-size:14px">🎬 کلیپ‌های ضبط‌شده‌ی خودکار</h2>
+        <div id="gallery"><div class="small" id="galleryEmpty">هنوز کلیپی ضبط نشده — صبر کن سوئینگ انجام شود…</div></div>
+      </div>
+      <div class="panel">
+        <h2 style="font-size:14px">📜 گزارش رویدادها</h2>
+        <ul id="logCap" class="log"></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ تب ۳: خواندن گرین ============ -->
+<section id="tab-green" class="tab">
+  <div class="grid2">
+    <div class="canvasWrap">
+      <canvas id="cvGreen" class="disp" width="660" height="440" style="cursor:default"></canvas>
+      <div class="note">
+        🧭 اپ‌هایی مثل <b>PuttView X</b> و <b>PuttArc</b> اول با LiDAR آیفون نقشه‌ی ارتفاعی گرین را اسکن می‌کنند، بعد گرادیان شیب را حساب می‌کنند و در آخر دقیقاً همین فیزیک غلتش توپ را روی آن نقشه اجرا می‌کنند تا «خط ایده‌آل» و «نقطه‌ی نشانه‌گیری» را روی چمن نمایش دهند. اینجا همان حل‌کننده‌ی فیزیک را می‌بینی — فقط شیب را دستی به‌جای LiDAR می‌دهی.
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2 style="font-size:14px">⚙️ تنظیمات پات</h2>
+        <div class="sliderRow"><span>فاصله تا سوراخ</span><input type="range" id="gDist" min="1.5" max="16" step="0.5" value="6"/><output id="gDistV">6 م</output></div>
+        <div class="sliderRow"><span>شیب جانبی (بریک)</span><input type="range" id="gSide" min="-4" max="4" step="0.1" value="1.8"/><output id="gSideV">1.8%</output></div>
+        <div class="sliderRow"><span>شیب طولی (سربالایی+)</span><input type="range" id="gUp" min="-4" max="4" step="0.1" value="0"/><output id="gUpV">0%</output></div>
+        <div class="sliderRow"><span>سرعت گرین (Stimp)</span><input type="range" id="gStimp" min="7" max="14" step="0.5" value="10"/><output id="gStimpV">10</output></div>
+      </div>
+      <div class="panel">
+        <h2 style="font-size:14px">🧪 گزارش حل‌کننده</h2>
+        <div id="greenReport" style="font-size:13px;line-height:2.2"></div>
+        <div class="note">فلش‌های آبی روی زمین جهت «پایین‌دستی شیب» را نشان می‌دهند — همان Slope Arrows معروف PuttView. سرعت ضربه اولیه خودکار انتخاب می‌شود (متناسب با فاصله).</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ تب ۴: تکنولوژی ============ -->
+<section id="tab-tech" class="tab">
+  <div class="panel">
+    <h2>🧠 هر اپ حرفه‌ای گلف با چه تکنولوژی‌ای ساخته شده؟</h2>
+    <div class="techgrid">
+      <div class="tcard"><h3>✨ ردیابی توپ — Shot Tracer / Ace Trace</h3>جداسازی «لکه‌ی روشن» (bright-blob segmentation) + پیش‌بینی حرکت با <b>فیلتر کالمن</b> + جریان نوری (optical flow) برای فریم‌های مبهم. خروجی: خط ترِیسر تلویزیونی + افکت استروب برای پات. کاملاً روی دستگاه و آفلاین.</div>
+      <div class="tcard"><h3>🤖 ضبط خودکار — Swing Profile / OnForm</h3><b>تشخیص حرکت با تفاضل فریم</b> (frame differencing) روی جریان زنده‌ی دوربین؛ وقتی انرژی حرکت از آستانه بگذرد ضبط شروع می‌شود و بعد از سکون قطع. دوربین ثابت + هیچ سنسوری لازم نیست.</div>
+      <div class="tcard"><h3>🦴 اسکلت و بیومکانیک — Sportsbox AI / DeepSwing</h3>شبکه‌ی عصبی <b>تخمین پوز (Pose Estimation)</b> مثل MediaPipe/BLAZEPOSE با ۳۳ نقطه‌ی بدن، بعد مدل ۲بعدی→۳بعدی (lifting به اسکلت SMPL) برای زوایای واقعی بیومکانیک. اجرا روی تراشه‌ی گوشی (CoreML/NNAPI).</div>
+      <div class="tcard"><h3>🧭 اسکن AR گرین — PuttView X / PuttArc / GolfScope</h3>سنسور <b>LiDAR</b> + ARKit (Scene Reconstruction) → مش سه‌بعدی و نقشه‌ی ارتفاع گرین → گرادیان شیب → <b>فیزیک غلتش توپ</b> (اصطکاک بر اساس Stimp) → رندر خط پات با RealityKit. نیاز به iPhone Pro؛ اندروید معادلش ARCore Depth API است.</div>
+      <div class="tcard"><h3>📡 سنسورها — Blast / HackMotion / Arccos</h3>سخت‌افزار IMU (شتاب‌سنج + ژیروسکوپ) با بلوتوث: تمپو، چرخش فیس، زاویه مچ. Arccos سنسور روی گریپ + GPS برای ثبت خودکار ضربه‌ها در زمین.</div>
+      <div class="tcard"><h3>🎥 شبیه‌ساز پات — Exputt RG</h3>دوربین سرعت‌بالا (high-speed) + مارکر روی پاتر؛ بینایی ماشین زاویه‌ی فیس، مسیر و تمپو را می‌خواند و روی گرین مجازی تلویزیون نمایش می‌دهد.</div>
+    </div>
+    <table>
+      <tr><th>قابلیت</th><th>در وب (همین صفحه)</th><th>در اپ موبایل حرفه‌ای</th></tr>
+      <tr><td>ردیابی توپ و ترِیسر</td><td>✅ کامل (موتور همین صفحه)</td><td>✅ با فریم‌ریت بالاتر (240fps)</td></tr>
+      <tr><td>ضبط خودکار ضربه</td><td>✅ کامل</td><td>✅ کامل + بافر حلقه‌ای</td></tr>
+      <tr><td>اسکلت بدن ۲بعدی</td><td>✅ با اینترنت (MediaPipe)</td><td>✅ آفلاین روی تراشه</td></tr>
+      <tr><td>بیومکانیک ۳بعدی</td><td>⛔ سنگین است</td><td>✅ مدل lifting + SMPL</td></tr>
+      <tr><td>اسکن AR گرین</td><td>⛔ نیاز به LiDAR/ARKit</td><td>✅ فقط iPhone Pro / پروژکتور</td></tr>
+      <tr><td>دیتای سنسوری IMU</td><td>⛔</td><td>✅ سخت‌افزار جانبی</td></tr>
+    </table>
+    <div class="note">🚀 مسیر ساخت نسخه‌ی موبایل کامل: پوسته‌ی بومی (Swift برای iOS / Kotlin برای اندروید) یا Flutter + «MediaPipe Tasks Vision» برای اسکلت + ARKit RealityKit و SceneReconstruction برای اسکن گرین + AVFoundation/Camera2 برای ضبط ۲۴۰ فریم. همین منطق‌هایی که اینجا در جاوااسکریپت دیدی، عیناً به آن پلتفرم‌ها قابل انتقال است.</div>
+  </div>
+</section>
+</main>
+
+<footer>ساخته‌شده به‌عنوان نمونه‌ی فناوری — تمام پردازش‌ها داخل مرورگر تو اجرا می‌شود و هیچ ویدیویی جایی آپلود نمی‌شود. برای دوربین زنده و دانلود خروجی، فایل را دانلود و در کروم باز کن.</footer>
+
+<div id="toast" class="toast"></div>
+<video id="vid" playsinline muted style="display:none"></video>
+<video id="vidCap" playsinline muted loop style="display:none"></video>
+
+<script>
+"use strict";
+/* ================= ابزارهای پایه ================= */
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+let toastTimer=null;
+function toast(msg,ms=3600){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),ms);}
+function chip(el,cls,txt){el.className='chip '+cls;el.textContent=txt;}
+function setStat(id,v){$(id).textContent=v;}
+
+/* ================= تب‌ها ================= */
+let activeTab='trace';
+document.querySelectorAll('nav[data-tabs] button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('nav[data-tabs] button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');activeTab=b.dataset.tab;
+    document.querySelectorAll('.tab').forEach(s=>s.classList.toggle('on',s.id==='tab-'+b.dataset.tab));
+  });
+});
+
+/* ================= دموهای سینتتیک ================= */
+function makeDriveDemo(loop){
+  const c=document.createElement('canvas');c.width=640;c.height=360;const g=c.getContext('2d');
+  const D={canvas:c,w:640,h:360,dur:4.2,loop:!!loop,t:0,seedT:0.56,kind:'drive'};
+  function ballAt(t){
+    const T0=0.5,TEY=300,G=300,VY=310,VX=150,AM=6;let tau=t-T0;
+    if(tau<0)return null;
+    let x=85,y=TEY,tt=tau,vx=VX;const tf=2*VY/G;
+    if(tt<=tf)return{x:x+vx*tt+0.5*AM*tt*tt,y:y-VY*tt+0.5*G*tt*tt};
+    x+=vx*tf+0.5*AM*tf*tf;tt-=tf;vx+=AM*tf;let vyb=VY*0.35;
+    for(let b=0;b<3;b++){const tb=2*vyb/G;if(tt<=tb)return{x:x+vx*tt,y:y-vyb*tt+0.5*G*tt*tt};x+=vx*tb;tt-=tb;vyb*=0.35;vx*=0.7;}
+    const tr=Math.min(tt,vx/150);
+    return{x:x+vx*tr-75*tr*tr,y:y};
+  }
+  D.ballAt=ballAt;
+  D.draw=function(t){
+    t=((t%D.dur)+D.dur)%D.dur;
+    const sky=g.createLinearGradient(0,0,0,220);sky.addColorStop(0,'#7ec3f0');sky.addColorStop(1,'#e8f6ff');
+    g.fillStyle=sky;g.fillRect(0,0,640,220);
+    g.fillStyle='#fff6cf';g.beginPath();g.arc(540,55,26,0,7);g.fill();
+    g.fillStyle='rgba(255,255,255,.85)';
+    for(let i=0;i<3;i++){const cx=((t*14+i*230)%760)-60;
+      g.beginPath();g.ellipse(cx,50+i*28,34,12,0,0,7);g.fill();
+      g.beginPath();g.ellipse(cx+22,44+i*28,24,10,0,0,7);g.fill();}
+    g.fillStyle='#8fbf8a';g.beginPath();g.moveTo(0,220);g.quadraticCurveTo(140,150,300,220);g.fill();
+    g.beginPath();g.moveTo(240,220);g.quadraticCurveTo(430,140,640,225);g.lineTo(640,220);g.fill();
+    g.fillStyle='#3f7d4e';
+    for(let i=0;i<7;i++){const tx=20+i*95;g.beginPath();g.moveTo(tx,225);g.lineTo(tx+10,185);g.lineTo(tx+20,225);g.fill();}
+    const gr=g.createLinearGradient(0,220,0,360);gr.addColorStop(0,'#5aa861');gr.addColorStop(1,'#3f8a4c');
+    g.fillStyle=gr;g.fillRect(0,220,640,140);
+    g.fillStyle='rgba(255,255,255,.05)';for(let i=0;i<8;i++)g.fillRect(i*80,220,40,140);
+    g.strokeStyle='#eee';g.lineWidth=2;g.beginPath();g.moveTo(592,225);g.lineTo(592,165);g.stroke();
+    g.fillStyle='#ff5d5d';g.beginPath();g.moveTo(592,165);g.lineTo(566,174);g.lineTo(592,183);g.fill();
+    const sw=clamp((t-0.12)/0.38,0,1);
+    g.strokeStyle='#20313f';g.lineWidth=3;
+    g.beginPath();g.moveTo(85,300);g.lineTo(85,252);g.stroke();
+    g.beginPath();g.moveTo(85,300);g.lineTo(76,300);g.moveTo(85,300);g.lineTo(94,300);g.stroke();
+    g.fillStyle='#20313f';g.beginPath();g.arc(85,242,9,0,7);g.fill();
+    g.save();g.translate(85,262);g.rotate(-2.2+sw*3.4);
+    g.strokeStyle='#6b4a2a';g.lineWidth=3;g.beginPath();g.moveTo(0,0);g.lineTo(-46,34);g.stroke();
+    g.fillStyle='#cfd6dc';g.fillRect(-52,30,10,7);g.restore();
+    const b=ballAt(t);
+    if(b){
+      g.fillStyle='rgba(0,0,0,.25)';g.beginPath();g.ellipse(b.x,302,7,2.4,0,0,7);g.fill();
+      g.fillStyle='#fff';g.beginPath();g.arc(b.x,b.y-4,5,0,7);g.fill();
+    }
+  };
+  return D;
+}
+function makePuttDemo(loop){
+  const c=document.createElement('canvas');c.width=640;c.height=360;const g=c.getContext('2d');
+  const D={canvas:c,w:640,h:360,dur:3.6,loop:!!loop,t:0,seedT:0.62,kind:'putt'};
+  const B={x0:70,y0:150,vx:221,vy:-5.7,ax:-38.5,ay:17.3,t0:0.55,HX:545,HY:205};
+  function ballAt(t){
+    const tau=t-B.t0;
+    if(tau<0)return{x:B.x0,y:B.y0,sunk:false};
+    const x=B.x0+B.vx*tau+0.5*B.ax*tau*tau,y=B.y0+B.vy*tau+0.5*B.ay*tau*tau;
+    if(Math.hypot(x-B.HX,y-B.HY)<9)return{x:B.HX,y:B.HY,sunk:true};
+    return{x,y,sunk:false};
+  }
+  D.ballAt=ballAt;
+  D.draw=function(t){
+    t=clamp(t,0,D.dur);
+    const gr=g.createLinearGradient(0,0,0,360);gr.addColorStop(0,'#41914d');gr.addColorStop(1,'#2f7a3d');
+    g.fillStyle=gr;g.fillRect(0,0,640,360);
+    g.fillStyle='rgba(255,255,255,.045)';for(let i=0;i<9;i++)g.fillRect(0,i*40,640,20);
+    g.strokeStyle='rgba(255,255,255,.12)';g.lineWidth=1;g.strokeRect(14,14,612,332);
+    g.fillStyle='#10331c';g.beginPath();g.arc(B.HX,B.HY,8,0,7);g.fill();
+    g.strokeStyle='#e8f3ec';g.lineWidth=1.5;g.beginPath();g.arc(B.HX,B.HY,8,0,7);g.stroke();
+    /* خروجی موتور Putt-Tracer: نقاط استروب مسیر غلتش */
+    const cur=Math.max(0,t-B.t0),n=Math.floor(cur/0.07);
+    for(let k=0;k<=n;k++){
+      const tt=k*0.07,x=B.x0+B.vx*tt+0.5*B.ax*tt*tt,y=B.y0+B.vy*tt+0.5*B.ay*tt*tt;
+      if(Math.hypot(x-B.HX,y-B.HY)<9)break;
+      g.globalAlpha=0.25+0.65*(k/Math.max(4,n));
+      g.fillStyle='#ffd166';g.beginPath();g.arc(x,y,2.2,0,7);g.fill();
+    }
+    g.globalAlpha=1;
+    const b=ballAt(t);
+    if(!b.sunk){g.fillStyle='#fff';g.beginPath();g.arc(b.x,b.y,4.5,0,7);g.fill();}
+    else{g.fillStyle='#ffd166';g.font='13px Tahoma';g.fillText('سوراخ شد!',B.HX-32,B.HY-18);}
+  };
+  return D;
+}
+
+/* ================= تب ۱: منبع و پخش ================= */
+const cvT=$('cvTrace'),ctxT=cvT.getContext('2d');
+const an=document.createElement('canvas');an.width=240;an.height=135;
+const anx=an.getContext('2d',{willReadFrequently:true});
+const media={kind:'none',label:'—',dur:4,rate:1,playing:false,t:0,vid:$('vid'),demo:null,w:960,h:540};
+let trail=[],seed=null,seedColor=[235,235,235],velN={x:0,y:0},lostN=0,lastTrkT=0;
+let pickMode=false,trackerOn=true,trailStyle='line',trackingLost=false;
+let exporting=false,expRec=null,expChunks=[];
+
+function addLog(s){const li=document.createElement('li');li.textContent=s;const l=$('logTrace');l.prepend(li);while(l.children.length>30)l.lastChild.remove();}
+function srcEl(){return media.kind==='file'?media.vid:(media.demo?media.demo.canvas:null);}
+function seekTo(t){
+  t=clamp(t,0,media.dur||0);media.t=t;lastTrkT=t;
+  if(t<0.03){trail=[];seed=null;lostN=0;}
+  if(media.kind==='file'){try{media.vid.currentTime=t;}catch(e){}}
+  else if(media.demo){media.demo.draw(t);}
+}
+function playMedia(){
+  if(media.kind==='none'){toast('اول یک منبع انتخاب کن');return;}
+  if(media.kind==='file'){
+    if(media.vid.readyState<2){toast('ویدیو هنوز بارگذاری نشده');return;}
+    if(media.t>=media.dur-0.06)seekTo(0);
+    media.vid.playbackRate=media.rate;media.vid.play().catch(()=>{});
+  }else{
+    if(media.t>=media.dur-0.05)seekTo(0);
+  }
+  media.playing=true;updPlayBtn();
+}
+function pauseMedia(){media.playing=false;if(media.kind==='file')media.vid.pause();updPlayBtn();}
+function updPlayBtn(){$('btnPlay').textContent=media.playing?'⏸ توقف':'▶ پخش';}
+$('btnPlay').onclick=()=>{media.playing?pauseMedia():playMedia();};
+$('speedSel').onchange=e=>{media.rate=parseFloat(e.target.value);if(media.kind==='file')media.vid.playbackRate=media.rate;};
+$('scrub').oninput=e=>{if(!media.dur)return;pauseMedia();seekTo(e.target.value/1000*media.dur);};
+media.vid.addEventListener('ended',()=>{media.playing=false;updPlayBtn();});
+
+function setDemo(mk,label){
+  media.kind='demo';media.demo=mk(false);media.label=label;media.dur=media.demo.dur;
+  media.w=640;media.h=360;media.t=0;media.playing=false;media.rate=parseFloat($('speedSel').value);
+  trail=[];seed=null;velN={x:0,y:0};lostN=0;lastTrkT=0;lastPose=null;trackingLost=false;
+  updPlayBtn();
+}
+$('btnDemoDrive').onclick=()=>{setDemo(makeDriveDemo,'دموی درایو');trackerOn=true;$('ckTracker').checked=true;seekTo(0);playMedia();addLog('دموی درایو — ردیابی خودکار توپ فعال است');};
+$('btnDemoPutt').onclick=()=>{setDemo(makePuttDemo,'دموی پات');trackerOn=false;$('ckTracker').checked=false;seekTo(0);playMedia();addLog('دموی پات — خروجی موتور Putt-Tracer (استروب)');};
+$('btnUp').onclick=()=>$('fileUp').click();
+$('fileUp').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;
+  const v=media.vid;v.src=URL.createObjectURL(f);
+  media.kind='file';media.dur=0;media.playing=false;media.t=0;
+  trail=[];seed=null;velN={x:0,y:0};lastPose=null;trackingLost=false;
+  v.onloadedmetadata=()=>{
+    media.dur=v.duration;media.w=v.videoWidth||960;media.h=v.videoHeight||540;
+    seekTo(0.05);
+    toast('ویدیو بارگذاری شد — «قفل توپ» را بزن و روی توپ کلیک کن');
+  };
+  v.onerror=()=>toast('پخش این فرمت در مرورگر ممکن نیست');
+});
+
+/* ================= موتور ردیابی توپ ================= */
+function seedBall(nx,ny){
+  let col=[235,235,235];
+  try{
+    const r=lbox(cvT.width,cvT.height,media.w,media.h);
+    const px=Math.round(r.dx+nx*r.dw),py=Math.round(r.dy+ny*r.dh);
+    const d=ctxT.getImageData(clamp(px,0,cvT.width-1),clamp(py,0,cvT.height-1),1,1).data;
+    col=[d[0],d[1],d[2]];
+  }catch(e){}
+  seedColor=col;seed={x:nx,y:ny};velN={x:0,y:0};lostN=0;trackingLost=false;lastTrkT=media.t;
+  trail=trail.filter(p=>p.t<=media.t);
+  toast('توپ قفل شد ✔ ردیابی شروع شد');
+}
+cvT.addEventListener('click',e=>{
+  if(!pickMode)return;pickMode=false;$('btnSeed').classList.remove('on');
+  const rect=cvT.getBoundingClientRect();
+  const r=lbox(cvT.width,cvT.height,media.w,media.h);
+  const nx=clamp(((e.clientX-rect.left)*(cvT.width/rect.width)-r.dx)/r.dw,0,1);
+  const ny=clamp(((e.clientY-rect.top)*(cvT.height/rect.height)-r.dy)/r.dh,0,1);
+  seedBall(nx,ny);
+});
+$('btnSeed').onclick=()=>{
+  if(media.kind==='none'){toast('اول منبع انتخاب/پخش کن');return;}
+  pickMode=!pickMode;$('btnSeed').classList.toggle('on',pickMode);
+  if(pickMode)toast('حالا روی توپ در تصویر کلیک کن 🎯');
+};
+$('ckTracker').addEventListener('change',e=>{trackerOn=e.target.checked;lastTrkT=media.t;});
+$('selStyle').onchange=e=>{trailStyle=e.target.value;};
+$('btnClearTrail').onclick=()=>{trail=[];seed=null;toast('مسیر پاک شد');};
+
+function trackFrame(){
+  if(!seed||!media.playing||!trackerOn)return;
+  const now=media.kind==='file'?media.vid.currentTime:media.t;
+  const dt=now-lastTrkT;
+  if(dt<=0||dt>0.4)return;
+  const el=srcEl();if(!el)return;
+  anx.drawImage(el,0,0,240,135);
+  let data;try{data=anx.getImageData(0,0,240,135).data;}catch(e){return;}
+  const px=(seed.x+velN.x*dt)*240,py=(seed.y+velN.y*dt)*135;
+  const R=30,Ry=17;
+  let best=-1e9,bx=-1,by=-1;
+  const x0=Math.max(0,Math.floor(px-R)),x1=Math.min(239,Math.ceil(px+R));
+  const y0=Math.max(0,Math.floor(py-Ry)),y1=Math.min(134,Math.ceil(py+Ry));
+  const sr=seedColor[0]/255,sg=seedColor[1]/255,sb=seedColor[2]/255;
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+    const i=(y*240+x)*4;
+    const r=data[i]/255,g2=data[i+1]/255,b2=data[i+2]/255;
+    const lum=r*0.4+g2*0.45+b2*0.15;
+    if(lum<0.72)continue;
+    const cs=1-Math.abs(r-sr)-Math.abs(g2-sg)-Math.abs(b2-sb);
+    const d=Math.hypot(x-px,y-py);
+    const s=lum*100+cs*45-d*1.1;
+    if(s>best){best=s;bx=x;by=y;}
+  }
+  if(bx<0){lostN++;if(lostN>12&&!trackingLost){trackingLost=true;addLog('ردیابی قطع شد — می‌توانی دوباره «قفل توپ» بزنی');}return;}
+  const nx=bx/240,ny=by/135;
+  if(Math.hypot(nx-seed.x,ny-seed.y)>0.13){lostN++;return;}
+  const ivx=(nx-seed.x)/dt,ivy=(ny-seed.y)/dt;
+  velN.x=velN.x*0.45+ivx*0.55;velN.y=velN.y*0.45+ivy*0.55;
+  trail.push({t:now,x:nx,y:ny});
+  seed={x:nx,y:ny};lostN=0;trackingLost=false;lastTrkT=now;
+  updStats();
+}
+function updStats(){
+  setStat('statPts',String(trail.length));
+  const pts=trail;if(pts.length<8)return;
+  const t0=pts[0].t,x0=pts[0].x,y0=pts[0].y;
+  let apex=pts[0],ai=0;
+  for(let i=1;i<pts.length;i++)if(pts[i].y<apex.y){apex=pts[i];ai=i;}
+  let land=null;
+  for(let i=ai+1;i<pts.length;i++)if(pts[i].y>=y0-0.012){land=pts[i];break;}
+  setStat('statFlight',land?((land.t-t0).toFixed(2)+' ث'):'—');
+  const pxApex=Math.round((y0-apex.y)*media.h);
+  setStat('statApex',pxApex>3?pxApex+' پیکسل':'—');
+  const k=Math.min(6,pts.length-1);
+  const vx0=(pts[k].x-x0)/((pts[k].t-t0)||1);
+  let dev=0,n=0;
+  for(let i=k;i<pts.length;i++){dev+=pts[i].x-(x0+vx0*(pts[i].t-t0));n++;}
+  const m=(dev/n)*media.w;
+  setStat('statCurve',Math.abs(m)<8?'~ مستقیم':(m>0?'انحنا به راست ↷':'انحنا به چپ ↶'));
+}
+
+/* ================= رسم مسیر ================= */
+function lbox(W,H,sw,sh){const s=Math.min(W/sw,H/sh);return{dw:sw*s,dh:sh*s,dx:(W-sw*s)/2,dy:(H-sh*s)/2};}
+function drawTrail(){
+  if(trail.length<2)return;
+  const r=lbox(cvT.width,cvT.height,media.w,media.h);
+  const pts=trail.filter(p=>p.t<=media.t+0.001);
+  if(pts.length<2)return;
+  ctxT.save();
+  if(trailStyle==='strobe'){
+    let lastT=-1;
+    pts.forEach((p,i)=>{
+      if(p.t-lastT>=0.07||i===pts.length-1){
+        ctxT.globalAlpha=0.25+0.75*(i/pts.length);
+        ctxT.fillStyle='#ffd166';
+        ctxT.beginPath();ctxT.arc(r.dx+p.x*r.dw,r.dy+p.y*r.dh,3,0,7);ctxT.fill();
+        lastT=p.t;
+      }
+    });
+  }else{
+    for(let i=1;i<pts.length;i++){
+      const f=i/pts.length;
+      ctxT.strokeStyle=`rgba(255,${Math.round(59+150*f)},${Math.round(48+54*f)},${0.25+0.75*f})`;
+      ctxT.lineWidth=1.2+2.6*f;
+      ctxT.beginPath();
+      ctxT.moveTo(r.dx+pts[i-1].x*r.dw,r.dy+pts[i-1].y*r.dh);
+      ctxT.lineTo(r.dx+pts[i].x*r.dw,r.dy+pts[i].y*r.dh);
+      ctxT.stroke();
+    }
+    const lp=pts[pts.length-1];
+    ctxT.fillStyle='#fff';ctxT.beginPath();ctxT.arc(r.dx+lp.x*r.dw,r.dy+lp.y*r.dh,4,0,7);ctxT.fill();
+  }
+  ctxT.restore();
+}
+
+/* ================= خروجی ویدیو ================= */
+$('btnExport').onclick=()=>{
+  if(media.kind==='none'){toast('منبعی انتخاب نشده');return;}
+  if(exporting)return;
+  let rec;
+  try{rec=new MediaRecorder(cvT.captureStream(30));}
+  catch(e){toast('مرورگر اجازه‌ی ضبط ویدیو نمی‌دهد');return;}
+  expChunks=[];expRec=rec;
+  rec.ondataavailable=e=>{if(e.data&&e.data.size)expChunks.push(e.data);};
+  rec.onstop=()=>{
+    const b=new Blob(expChunks,{type:'video/webm'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(b);a.download='golf-trace.webm';
+    document.body.appendChild(a);a.click();a.remove();
+    toast('خروجی ساخته شد — اگر دانلود نشد، فایل را خارج از پیش‌نمایش باز کن');
+  };
+  seekTo(0);exporting=true;rec.start();playMedia();
+};
+function maybeFinishExport(){
+  if(exporting&&media.t>=media.dur-0.08){
+    exporting=false;pauseMedia();
+    try{expRec.stop();}catch(e){}
+  }
+}
+
+/* ================= اسکلت بدن (MediaPipe — اختیاری، نیاز اینترنت) ================= */
+let poseObj=null,lastPose=null,poseOn=false,lastPoseSend=0;
+$('ckPose').addEventListener('change',async e=>{
+  poseOn=e.target.checked;
+  if(!poseOn){chip($('chipPose'),'','اسکلت بدن: خاموش');return;}
+  if(poseObj){chip($('chipPose'),'ok','اسکلت بدن: فعال');return;}
+  chip($('chipPose'),'warn','اسکلت بدن: در حال بارگذاری…');
+  try{
+    await loadPose();
+    chip($('chipPose'),'ok','اسکلت بدن: فعال');
+    addLog('موتور اسکلت (MediaPipe — همخانه‌ی Sportsbox AI) بارگذاری شد');
+  }catch(err){
+    poseOn=false;$('ckPose').checked=false;
+    chip($('chipPose'),'err','اسکلت بدن: شبکه در دسترس نیست');
+    toast('برای اسکلت بدن، فایل را دانلود و با اینترنت در کروم باز کن');
+  }
+});
+function loadPose(){
+  return new Promise((res,rej)=>{
+    if(window.Pose)return res();
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js';
+    s.onload=async()=>{
+      try{
+        poseObj=new window.Pose({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`});
+        poseObj.setOptions({modelComplexity:0,smoothLandmarks:true,minDetectionConfidence:0.5,minTrackingConfidence:0.5});
+        poseObj.onResults(r=>{lastPose=r;});
+        if(poseObj.initialize)await poseObj.initialize();
+        res();
+      }catch(e){rej(e);}
+    };
+    s.onerror=()=>rej(new Error('offline'));
+    document.head.appendChild(s);
+  });
+}
+async function poseTick(){
+  if(!poseOn||!poseObj)return;
+  const now=performance.now();
+  if(now-lastPoseSend<120)return;
+  lastPoseSend=now;
+  const el=srcEl();if(!el)return;
+  try{await poseObj.send({image:el});}catch(e){}
+}
+const BONES=[[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,31],[28,32]];
+function drawPose(){
+  if(!lastPose||!lastPose.poseLandmarks)return;
+  const lm=lastPose.poseLandmarks;
+  const r=lbox(cvT.width,cvT.height,media.w,media.h);
+  ctxT.save();ctxT.strokeStyle='#39d98a';ctxT.lineWidth=2.5;ctxT.lineCap='round';
+  BONES.forEach(pair=>{
+    const p=lm[pair[0]],q=lm[pair[1]];
+    if(!p||!q||p.visibility<0.5||q.visibility<0.5)return;
+    ctxT.beginPath();
+    ctxT.moveTo(r.dx+p.x*r.dw,r.dy+p.y*r.dh);
+    ctxT.lineTo(r.dx+q.x*r.dw,r.dy+q.y*r.dh);
+    ctxT.stroke();
+  });
+  ctxT.fillStyle='#ffd166';
+  lm.forEach(p=>{if(p.visibility>0.5){ctxT.beginPath();ctxT.arc(r.dx+p.x*r.dw,r.dy+p.y*r.dh,2.6,0,7);ctxT.fill();}});
+  ctxT.restore();
+  const vis3=a=>lm[a]&&lm[a].visibility>0.4;
+  if(vis3(23)&&vis3(25)&&vis3(27)&&vis3(24)&&vis3(26)&&vis3(28)){
+    const ang=(a,b,c)=>{
+      const v1=[lm[a].x-lm[b].x,lm[a].y-lm[b].y],v2=[lm[c].x-lm[b].x,lm[c].y-lm[b].y];
+      const d=(v1[0]*v2[0]+v1[1]*v2[1])/((Math.hypot(v1[0],v1[1])*Math.hypot(v2[0],v2[1]))||1);
+      return Math.acos(clamp(d,-1,1))*180/Math.PI;
+    };
+    const knee=(ang(23,25,27)+ang(24,26,28))/2;
+    setStat('statKnee',isFinite(knee)?Math.round(knee)+'°':'—');
+  }
+  if(vis3(11)&&vis3(12)&&vis3(23)&&vis3(24)){
+    const sm={x:(lm[11].x+lm[12].x)/2,y:(lm[11].y+lm[12].y)/2};
+    const hm={x:(lm[23].x+lm[24].x)/2,y:(lm[23].y+lm[24].y)/2};
+    const spine=Math.atan2(sm.x-hm.x,hm.y-sm.y)*180/Math.PI;
+    setStat('statSpine',isFinite(spine)?Math.round(spine)+'°':'—');
+  }
+}
+
+/* ================= حلقه‌ی تب ترِیسِر ================= */
+function tickTrace(dt){
+  if(media.kind==='demo'&&media.playing){
+    media.t+=dt*media.rate;
+    if(media.t>=media.dur)media.t=media.dur,pauseMedia();
+  }
+  if(media.kind==='file')media.t=media.vid.currentTime;
+  /* سیدِ خودکار برای دموها */
+  if(media.kind==='demo'&&trackerOn&&trail.length===0&&media.demo.ballAt&&media.t>=media.demo.seedT){
+    const b=media.demo.ballAt(media.t);
+    if(b&&!b.sunk)seedBall(b.x/640,b.y/360);
+  }
+  renderTrace();
+}
+function renderTrace(){
+  ctxT.fillStyle='#000';ctxT.fillRect(0,0,cvT.width,cvT.height);
+  const el=srcEl();
+  if(!el){
+    ctxT.fillStyle='#2a4a3c';ctxT.font='16px Tahoma';ctxT.textAlign='center';
+    ctxT.fillText('یکی از منبع‌های بالا را انتخاب کن ⛳',cvT.width/2,cvT.height/2);
+    ctxT.textAlign='start';
+    return;
+  }
+  const r=lbox(cvT.width,cvT.height,media.w,media.h);
+  try{ctxT.drawImage(el,r.dx,r.dy,r.dw,r.dh);}catch(e){}
+  trackFrame();
+  drawTrail();
+  if(poseOn){poseTick();drawPose();}
+  maybeFinishExport();
+  if(media.dur)$('scrub').value=String(Math.round(clamp(media.t/media.dur,0,1)*1000));
+}
+
+/* ================= تب ۲: ضبط خودکار ================= */
+const cvC=$('cvCap'),ctxC=cvC.getContext('2d');
+const cvM=$('cvMeter'),ctxM=cvM.getContext('2d');
+const anC=document.createElement('canvas');anC.width=128;anC.height=72;
+const anCx=anC.getContext('2d',{willReadFrequently:true});
+const capMedia={mode:'demo',demo:makeDriveDemo(true),vid:$('vidCap'),stream:null};
+let prevG=new Float32Array(128*72),havePrev=false,motHist=[];
+let capState='idle',lastAbove=0,cooldownUntil=0,recCap=null,capChunks=[],clipN=0,threshold=7;
+
+function addLogC(s){
+  const li=document.createElement('li');li.textContent=s;const l=$('logCap');l.prepend(li);
+  while(l.children.length>30)l.lastChild.remove();
+}
+function capSrc(){
+  if((capMedia.mode==='cam'||capMedia.mode==='file')&&capMedia.vid.readyState>=2)return capMedia.vid;
+  return null;
+}
+function tickCap(dt){
+  let src=capSrc();
+  if(!src){
+    capMedia.demo.t+=dt;
+    if(capMedia.demo.t>=capMedia.demo.dur)capMedia.demo.t=0;
+    capMedia.demo.draw(capMedia.demo.t);
+    src=capMedia.demo.canvas;
+  }
+  ctxC.fillStyle='#000';ctxC.fillRect(0,0,cvC.width,cvC.height);
+  const r=lbox(cvC.width,cvC.height,640,360);
+  try{ctxC.drawImage(src,r.dx,r.dy,r.dw,r.dh);}catch(e){}
+  motionStep();
+}
+function motionStep(){
+  let data;
+  try{
+    anCx.drawImage(capSrc()||capMedia.demo.canvas,0,0,128,72);
+    data=anCx.getImageData(0,0,128,72).data;
+  }catch(e){return;}
+  let s=0;
+  for(let i=0;i<128*72;i++){
+    const j=i*4;
+    const g0=(data[j]*3+data[j+1]*4+data[j+2])>>3;
+    if(havePrev)s+=Math.abs(g0-prevG[i]);
+    prevG[i]=g0;
+  }
+  havePrev=true;
+  s/=(128*72);
+  motHist.push(s);if(motHist.length>240)motHist.shift();
+  drawMeter(s);
+  const now=performance.now();
+  if(capState==='idle'&&s>threshold&&now>cooldownUntil){
+    capState='rec';lastAbove=now;startCapRec();
+    addLogC('⚡ حرکت شناسایی شد — ضبط خودکار شروع شد');
+  }else if(capState==='rec'){
+    if(s>threshold)lastAbove=now;
+    else if(now-lastAbove>1100){
+      stopCapRec();capState='cool';cooldownUntil=now+1600;
+      setTimeout(()=>{if(capState==='cool')capState='idle';},1650);
+    }
+  }
+}
+function drawMeter(cur){
+  const W=cvM.width,H=cvM.height;
+  ctxM.fillStyle='#08100d';ctxM.fillRect(0,0,W,H);
+  const bw=W/240;
+  motHist.forEach((v,i)=>{
+    const h=clamp(v*6,1,H-6);
+    ctxM.fillStyle=v>threshold?'#39d98a':'#2b6b50';
+    ctxM.fillRect(W-(i+1)*bw,H-h,bw*0.8,h);
+  });
+  const ty=H-clamp(threshold*6,1,H-6);
+  ctxM.strokeStyle='#ffd166';ctxM.setLineDash([5,4]);
+  ctxM.beginPath();ctxM.moveTo(0,ty);ctxM.lineTo(W,ty);ctxM.stroke();ctxM.setLineDash([]);
+  ctxM.fillStyle='#e8f3ec';ctxM.font='11px Tahoma';
+  ctxM.fillText('حرکت: '+cur.toFixed(1),8,14);
+}
+function startCapRec(){
+  capChunks=[];
+  try{recCap=new MediaRecorder(cvC.captureStream(30));}
+  catch(e){addLogC('⛔ این مرورگر اجازه‌ی ضبط نمی‌دهد');capState='idle';return;}
+  recCap.ondataavailable=e=>{if(e.data&&e.data.size)capChunks.push(e.data);};
+  recCap.onstop=()=>{
+    if(!capChunks.length)return;
+    addClip(new Blob(capChunks,{type:'video/webm'}));
+    addLogC('✔ کلیپ ضربه آماده شد (auto-replay)');
+  };
+  recCap.start();
+}
+function stopCapRec(){try{recCap.stop();}catch(e){}}
+function addClip(blob){
+  clipN++;
+  $('galleryEmpty')&&($('galleryEmpty').style.display='none');
+  const url=URL.createObjectURL(blob);
+  const d=document.createElement('div');d.className='clip';
+  const v=document.createElement('video');v.controls=true;v.src=url;
+  const info=document.createElement('div');
+  info.innerHTML='ضربه‌ی '+clipN+' — '+(blob.size/1024).toFixed(0)+' کیلوبایت<div class="small">ضبط‌شده به‌صورت خودکار با موتور تشخیص حرکت</div>';
+  const a=document.createElement('a');a.className='act';a.href=url;a.download='swing-'+clipN+'.webm';a.textContent='دانلود';
+  d.appendChild(v);d.appendChild(info);d.appendChild(a);
+  $('gallery').prepend(d);
+}
+$('btnCam').onclick=async()=>{
+  if(capMedia.mode==='cam'){stopCam();return;}
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    chip($('chipCam'),'err','دوربین: مسدود');
+    toast('دوربین در پیش‌نمایش داخلی مجاز نیست — فایل را دانلود کن و در کروم باز کن');
+    return;
+  }
+  try{
+    const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280}},audio:false});
+    capMedia.vid.srcObject=st;
+    await capMedia.vid.play();
+    capMedia.mode='cam';capMedia.stream=st;
+    $('btnCam').textContent='قطع دوربین';$('btnCam').classList.add('on');
+    $('capModeLbl').textContent='دوربین زنده 📷';
+    chip($('chipCam'),'ok','دوربین: متصل');
+    addLogC('دوربین متصل شد — گوشی/وب‌کم را ثابت بگذار');
+  }catch(e){
+    chip($('chipCam'),'err','دوربین: مسدود');
+    toast('اجازه‌ی دوربین داده نشد — در پیش‌نمایش داخلی طبیعی است؛ فایل را دانلود و در کروم باز کن');
+  }
+};
+function stopCam(){
+  if(capMedia.stream)capMedia.stream.getTracks().forEach(t=>t.stop());
+  capMedia.stream=null;capMedia.mode='demo';
+  $('btnCam').textContent='📷 دوربین زنده';$('btnCam').classList.remove('on');
+  $('capModeLbl').textContent='دموی تمرین (هر ۴ ثانیه یک سوئینگ)';
+  chip($('chipCam'),'','دوربین: —');
+}
+$('btnCapFile').onclick=()=>$('fileCap').click();
+$('fileCap').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;
+  stopCam();capMedia.mode='file';
+  capMedia.vid.srcObject=null;capMedia.vid.src=URL.createObjectURL(f);
+  capMedia.vid.loop=true;
+  capMedia.vid.play().catch(()=>{});
+  $('capModeLbl').textContent='ویدیوی آپلودشده: '+f.name;
+  addLogC('ویدیو بارگذاری شد: '+f.name);
+});
+$('thr').oninput=e=>{threshold=parseFloat(e.target.value);$('thrV').textContent=e.target.value;};
+
+/* ================= تب ۳: فیزیک خواندن گرین ================= */
+const cvG=$('cvGreen'),ctxG=cvG.getContext('2d');
+function simulatePutt(dist,side,up,stimp,v0,th){
+  const g=9.81,af=5.3/(stimp+1.5);
+  let x=0,y=0,vx=v0*Math.cos(th),vy=v0*Math.sin(th);
+  const axc=-g*up/100,ayc=g*side/100;
+  const pts=[[0,0]];
+  let t=0,captured=false,entry=0,minD=1e9,minPt=[0,0],crossY=null;
+  for(let i=0;i<5000;i++){
+    const sp=Math.hypot(vx,vy);
+    if(sp<0.04)break;
+    const dt=0.004;t+=dt;
+    vx+=(-af*vx/sp+axc)*dt;
+    vy+=(-af*vy/sp+ayc)*dt;
+    x+=vx*dt;y+=vy*dt;pts.push([x,y]);
+    const d=Math.hypot(x-dist,y);
+    if(d<minD){minD=d;minPt=[x,y];}
+    if(crossY===null&&x>=dist)crossY=y;
+    if(d<0.075&&Math.hypot(vx,vy)<1.7){captured=true;entry=Math.hypot(vx,vy);break;}
+    if(x>dist+2.5||t>14)break;
+  }
+  return{pts,t,captured,entry,minD,minPt,crossY,stopped:x};
+}
+function greenSolve(){
+  const dist=parseFloat($('gDist').value),side=parseFloat($('gSide').value),
+        up=parseFloat($('gUp').value),stimp=parseFloat($('gStimp').value);
+  $('gDistV').textContent=dist+' م';$('gSideV').textContent=side+'%';
+  $('gUpV').textContent=up+'%';$('gStimpV').textContent=stimp;
+  /* pace پایه: رسیدن به سوراخ با سرعت ورود ~0.5 m/s */
+  const af=5.3/(stimp+1.5),effA=Math.max(af+9.81*up/100,0.12);
+  const baseV=clamp(Math.sqrt(2*effA*dist+0.25),0.7,4.2);
+  /* جستجوی شبکه‌ای (زاویه × pace): نرم‌ترین خطی که سوراخ می‌شود */
+  let best=null,found=null;
+  outer:
+  for(let pi=0;pi<7;pi++){
+    const v0=clamp(baseV*(1+pi*0.055),0.7,4.2);
+    for(let th=-0.9;th<=0.9001;th+=0.01){
+      const res=simulatePutt(dist,side,up,stimp,v0,th);
+      if(res.captured){found={res,th,v0,pace:v0/baseV};break outer;}
+      const score=res.minD+Math.abs(res.stopped-dist)*0.02;
+      if(!best||score<best.score)best={res,th,v0,pace:v0/baseV,score};
+    }
+  }
+  const B=found||best;
+  if(!B){
+    const res=simulatePutt(dist,side,up,stimp,baseV,0);
+    drawGreen(res,dist,0,baseV,true,0,1);
+    return;
+  }
+  const r0=simulatePutt(dist,side,up,stimp,B.v0,0);
+  const breakY=r0.crossY!==null?r0.crossY:r0.minPt[1];
+  drawGreen(B.res,dist,B.th,B.v0,false,breakY,B.pace);
+}
+function drawGreen(res,dist,th,v0,unreach,breakY,pace){
+  const W=cvG.width,H=cvG.height;
+  const sc=Math.min((W-150)/Math.max(dist,2),(H-90)/8,34);
+  const ox=90,oy=H/2;
+  const gr=ctxG.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#2f7a3d');gr.addColorStop(1,'#3f9450');
+  ctxG.fillStyle=gr;ctxG.fillRect(0,0,W,H);
+  ctxG.fillStyle='rgba(255,255,255,.04)';for(let i=0;i<10;i++)ctxG.fillRect(0,i*46,W,23);
+  /* حلقه‌های فاصله */
+  ctxG.strokeStyle='rgba(255,255,255,.13)';ctxG.setLineDash([4,5]);ctxG.lineWidth=1;
+  for(let d0=2;d0<=dist+0.5;d0+=2){
+    ctxG.beginPath();ctxG.moveTo(ox+d0*sc,oy-64);ctxG.lineTo(ox+d0*sc,oy+64);ctxG.stroke();
+    ctxG.setLineDash([]);
+    ctxG.fillStyle='rgba(255,255,255,.5)';ctxG.font='10px Tahoma';
+    ctxG.fillText(d0+'م',ox+d0*sc-8,oy+76);
+    ctxG.setLineDash([4,5]);
+  }
+  ctxG.setLineDash([]);
+  /* فلش‌های شیب (Slope Arrows مثل PuttView) */
+  const gx=1,gy=parseFloat($('gSide').value)/100,gx2=parseFloat($('gUp').value)/100;
+  if(Math.abs(gy)>0.0005||Math.abs(gx2)>0.0005){
+    ctxG.strokeStyle='rgba(180,230,255,.55)';ctxG.lineWidth=1.4;
+    const ang=Math.atan2(gy,gx2);
+    for(let ix=0;ix<=dist+1;ix+=2)for(let iy=-2;iy<=2;iy++){
+      const px=ox+ix*sc,py=oy+iy*sc*0.9;
+      if(px<40||px>W-24||Math.abs(iy*sc*0.9)>64)continue;
+      ctxG.save();ctxG.translate(px,py);ctxG.rotate(ang);
+      ctxG.beginPath();ctxG.moveTo(-5,0);ctxG.lineTo(5,0);ctxG.lineTo(2,-3);
+      ctxG.moveTo(5,0);ctxG.lineTo(2,3);ctxG.stroke();
+      ctxG.restore();
+    }
+  }
+  /* سوراخ */
+  const hx=ox+dist*sc;
+  ctxG.fillStyle='#0c2a17';ctxG.beginPath();ctxG.arc(hx,oy,7,0,7);ctxG.fill();
+  ctxG.strokeStyle='#fff';ctxG.lineWidth=1.4;ctxG.beginPath();ctxG.arc(hx,oy,7,0,7);ctxG.stroke();
+  /* مسیر ایده‌آل */
+  ctxG.strokeStyle='#ffd166';ctxG.lineWidth=2.6;ctxG.lineJoin='round';
+  ctxG.beginPath();
+  res.pts.forEach((p,i)=>{const px=ox+p[0]*sc,py=oy+p[1]*sc;i?ctxG.lineTo(px,py):ctxG.moveTo(px,py);});
+  ctxG.stroke();
+  ctxG.fillStyle='#fff';
+  for(let k=0;k<res.pts.length;k+=8){
+    ctxG.beginPath();ctxG.arc(ox+res.pts[k][0]*sc,oy+res.pts[k][1]*sc,2.2,0,7);ctxG.fill();
+  }
+  /* شروع + بردار نشانه‌گیری */
+  ctxG.fillStyle='#fff';ctxG.beginPath();ctxG.arc(ox,oy,4,0,7);ctxG.fill();
+  ctxG.strokeStyle='#39d98a';ctxG.lineWidth=2.5;
+  ctxG.beginPath();ctxG.moveTo(ox,oy);ctxG.lineTo(ox+Math.cos(th)*48,oy+Math.sin(th)*48);ctxG.stroke();
+  /* گزارش */
+  const L=[];
+  if(unreach){
+    L.push('⛔ با این شیب و سرعت، هیچ خطی به سوراخ نمی‌رسد — فاصله را کم کن یا شیب را کمتر کن.');
+  }else if(res.captured){
+    L.push('✅ سوراخ شد — سرعت ورود: <b>'+res.entry.toFixed(2)+' m/s</b>');
+  }else if(res.minD<0.075){
+    L.push('⚡ سرعت زیاد — از کنار سوراخ رد شد (نزدیک‌ترین فاصله: '+(res.minD*100).toFixed(0)+' سانتی‌متر)');
+  }else if(res.stopped<dist-0.05){
+    L.push('⏹ کم آمد — '+(dist-res.stopped).toFixed(2)+' متر مانده متوقف شد');
+  }else{
+    L.push('🎯 کنار سوراخ توقف — خطای نهایی '+(res.minD*100).toFixed(0)+' سانتی‌متر');
+  }
+  const brk=breakY!==null&&breakY!==undefined?breakY:(res.crossY!==null?res.crossY:res.minPt[1]);
+  L.push('↔ کل بریک: <b>'+Math.abs(brk).toFixed(2)+' متر</b> به '+(brk>0?'راست':'چپ'));
+  L.push('🎯 نشانه‌گیری: <b>'+(Math.abs(2*Math.tan(th)*100)).toFixed(0)+' سانتی‌متر '+(th<0?'چپ':'راست')+'</b>ِ خطِ مستقیم سوراخ');
+  const paceTxt=pace>1.01?(' — چون بریک زیاد است، pace را محکم‌تر (×'+pace.toFixed(2)+') حل کرد'):'';
+  L.push('⏱ زمان غلتش: '+res.t.toFixed(1)+' ثانیه — سرعت ضربه: '+v0.toFixed(2)+' m/s (خودکار'+paceTxt+')');
+  $('greenReport').innerHTML=L.join('<br>');
+}
+['gDist','gSide','gUp','gStimp'].forEach(id=>$(id).addEventListener('input',greenSolve));
+greenSolve();
+
+/* ================= حلقه‌ی اصلی ================= */
+let lastTs=performance.now();
+function loop(ts){
+  const dt=Math.min(0.05,(ts-lastTs)/1000);lastTs=ts;
+  if(activeTab==='trace')tickTrace(dt);
+  else if(activeTab==='cap')tickCap(dt);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* شروع: دموی درایو را آماده‌ی پخش بگذار */
+setDemo(makeDriveDemo,'دموی درایو');
+trackerOn=true;$('ckTracker').checked=true;
+addLog('خوش آمدی! دموی درایو آماده است — پخش را بزن ⛳');
+</script>
+</body>
+</html>
