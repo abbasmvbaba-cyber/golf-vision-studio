@@ -125,8 +125,8 @@ input[type=file]{display:none}
 #arFps{top:calc(54px + env(safe-area-inset-top))}
 #arSummary .brand{display:flex;flex-direction:column;align-items:center;gap:5px;margin:0 0 8px}
 #arSummary .brand img{width:46px;height:46px;border-radius:11px;box-shadow:0 0 0 1px rgba(255,255,255,.18),0 6px 18px rgba(0,0,0,.4)}
-#arSummary .brand .bn{font-family:Menlo,monospace;font-size:9.5px;letter-spacing:3px;color:#9fe8c8}
-#arSummary .site{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.12);text-align:center;font-family:Menlo,monospace;font-size:10px;letter-spacing:3px;color:#8fd8e8}
+#arSummary .brand .bn{font-family:Menlo,monospace;font-size:11px;letter-spacing:1.2px;color:#9fe8c8;font-weight:700}
+#arSummary .site{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.12);text-align:center;font-family:Menlo,monospace;font-size:11px;letter-spacing:1.2px;color:#8fd8e8;font-weight:700}
 #arSummary .val{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.4px}
 #arSummary .hdr{font-family:ui-monospace,Menlo,monospace}
 .ar-glass{background:rgba(15,19,23,.74);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:14px}
@@ -337,7 +337,7 @@ function drawWM(){
   ctx.font='600 '+String(Math.max(9,Math.round(s*0.24)))+'px Menlo,monospace';
   ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.93)';
   ctx.shadowColor='rgba(0,0,0,.65)';ctx.shadowBlur=5;
-  ctx.fillText('P U T T C L U B . I R',cv.width/2,y+s*1.55);
+  ctx.fillText('PuttClub.ir  ·  PUTTCLUB VISION',cv.width/2,y+s*1.55);
   ctx.restore();
 }
 let mode='none',stream=null,facing='environment';
@@ -902,7 +902,7 @@ function finishShot(el,reason){
   html+=rows.map(r=>'<div class="row"><span class="lbl">'+r[0]+'</span><span class="val">'+r[1]+(r[2]?'<i class="tag">'+r[2]+'</i>':'')+'</span></div>').join('');
   if(reason==='lost')html+='<div class="sub2" style="direction:ltr">✕ BALL LEFT FRAME</div>';
   if(clipUrl)html+='<a class="ar-icbtn" style="margin-top:8px" href="'+clipUrl+'" download="puttclub-shot.'+(recMime.indexOf('mp4')>=0?'mp4':'webm')+'"><svg class="icn" viewBox="0 0 24 24"><use href="#i-dl"/></svg></a>';
-  html+='<div class="site">P U T T C L U B . I R</div>';
+  html+='<div class="site">PuttClub.ir</div>';
   /* کارت روی بوم → داخل ویدیو ثبت می‌شود؛ ضبط ۵ثانیه دیگر ادامه دارد */
   drawEndCard(rows,reason==='lost');
   cardHtml=html;
@@ -927,7 +927,7 @@ function drawEndCard(rows,lost){
       ctx.save();rrPath(ctx,lx,ly,s,s,s*0.24);ctx.clip();ctx.drawImage(wmImg,lx,ly,s,s);ctx.restore();}
     ctx.textAlign='center';ctx.fillStyle='#9fe8c8';
     ctx.font='600 '+String(Math.round(cw*0.05))+'px Menlo,monospace';
-    ctx.fillText('P U T T C L U B   V I S I O N',W/2,y+pad*0.7+cw*0.17+cw*0.08);
+    ctx.font='bold '+String(Math.round(cw*0.055))+'px Menlo,monospace';ctx.fillText('PUTTCLUB VISION',W/2,y+pad*0.7+cw*0.17+cw*0.08);
     ctx.textAlign='left';ctx.fillStyle='#9fe8c8';
     ctx.font='bold '+String(Math.round(cw*0.047))+'px Menlo,monospace';
     let ry=y+brandH+pad*0.6;
@@ -950,7 +950,7 @@ function drawEndCard(rows,lost){
     ctx.strokeStyle='rgba(255,255,255,0.14)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x+pad,ry);ctx.lineTo(x+cw-pad,ry);ctx.stroke();
     ctx.textAlign='center';ctx.fillStyle='#8fd8e8';
     ctx.font='600 '+String(Math.round(cw*0.05))+'px Menlo,monospace';
-    ctx.fillText('P U T T C L U B . I R',W/2,ry+lineH*0.8);
+    ctx.fillText('PuttClub.ir',W/2,ry+lineH*0.8);
     ctx.restore();
   }catch(e){}
 }
@@ -960,8 +960,9 @@ function finalizeRec(){
   lastMedia={url:clipUrl||null,poster:poster,name:'puttclub-shot.'+(recMime.indexOf('mp4')>=0?'mp4':'webm')};
   try{if(poster)setThumb(poster);}catch(e){}
   try{$('arThumb').classList.add('pulse');setTimeout(()=>{$('arThumb').classList.remove('pulse');},9000);}catch(e){}
-  if(cardHtml){$('arSummary').innerHTML=cardHtml;$('arSummary').classList.add('show');cardHtml=null;}
-  toast('کلیپ کامل شد (با کارت نتیجه) — تامبنیل → Save to Photos',5200);
+  /* کارت روی فیلم هست — نسخه‌ی DOM تکراری نمایش داده نمی‌شود */
+  cardHtml=null;
+  toast('کلیپ با کارت نتیجه ذخیره شد — تامبنیل → Save to Photos',4200);
 }
 /* لمس روی تصویر در حالت جستجو/مسلح = قفل دستی توپ */
 cv.addEventListener('pointerdown',e=>{
