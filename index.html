@@ -348,6 +348,8 @@ let ball=null,ballStable=0,prevCand=null,pxPerMeter=80;
 let prevGray=null,clubSeen=false,clubBox=null;
 let vel={x:0,y:0},lostN=0,tImpact=0,trail=[],seedCol=[245,245,245];
 let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=false,lastGray=null;
+let stickyLock=null; /* قفل چسبان: جای قفل قبلی — ضربه‌ی بعدی خودش همان‌جا قفل می‌شود */
+let stickyWait=0;
 let kf=null,trackMatched=0,trackTotal=0,predPts=null;
 /* تنظیمات کاربر — واحدها و رنگ‌ها (ذخیره‌ی دائمی) */
 const SET=(function(){
@@ -543,12 +545,58 @@ async function startCam(){
   }
 }
 function startDemo(){toast('دمو در این نسخه حذف شد — دوربین واقعی فعال است');}
+function tryStickyRelock(){
+  /* قفل چسبان: تا ۵ دقیقه بعد از قفل قبلی، اگر توپ‌مانندی همان حوالی بود، خودش قفل کن */
+  try{
+    if(!stickyLock||!lastGray||mode==='none')return;
+    if(performance.now()-stickyLock.t>300000){stickyLock=null;return;}
+    const g=lastGray,AW2=AW,AH2=AH;
+    const cx=stickyLock.x,cy=stickyLock.y,R=Math.max(14,stickyLock.r*3.5);
+    const x0=Math.max(1,Math.round(cx-R)),x1=Math.min(AW2-2,Math.round(cx+R));
+    const y0=Math.max(1,Math.round(cy-R)),y1=Math.min(AH2-2,Math.round(cy+R));
+    let sum=0,cnt=0;
+    for(let y=y0;y<=y1;y+=2)for(let x=x0;x<=x1;x+=2){sum+=g[y*AW2+x];cnt++;}
+    const mean=sum/Math.max(1,cnt);
+    const thr=clampN(mean+0.18,0.45,0.9);
+    const visited=new Uint8Array(AW2*AH2);
+    let best=null;
+    for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+      const i0=y*AW2+x;
+      if(visited[i0]||g[i0]<thr)continue;
+      const qx=[x],qy=[y];visited[i0]=1;
+      let n=0,sx=0,sy=0,minx=x,maxx=x,miny=y,maxy=y,peak=0;
+      while(qx.length&&n<=900){
+        const cx2=qx.pop(),cy2=qy.pop();
+        n++;sx+=cx2;sy+=cy2;
+        const lv=g[cy2*AW2+cx2];if(lv>peak)peak=lv;
+        if(cx2<minx)minx=cx2;if(cx2>maxx)maxx=cx2;
+        if(cy2<miny)miny=cy2;if(cy2>maxy)maxy=cy2;
+        for(let k=0;k<4;k++){
+          const nx=cx2+(k===0?1:(k===1?-1:0)),ny=cy2+(k===2?1:(k===3?-1:0));
+          if(nx<1||ny<1||nx>=AW2-1||ny>=AH2-1)continue;
+          const ni=ny*AW2+nx;
+          if(visited[ni]||g[ni]<thr-0.09)continue;
+          visited[ni]=1;qx.push(nx);qy.push(ny);
+        }
+      }
+      if(n<3||n>900)continue;
+      const sc=blobScore(g,AW2,AH2,sx/n,sy/n,n,minx,miny,maxx,maxy,peak);
+      if(!sc)continue;
+      const distPen=1-Math.min(1,Math.hypot(sx/n-cx,sy/n-cy)/R);
+      const score=sc.score*0.86+0.14*distPen;
+      if(!best||score>best.score)best={x:sx/n,y:sy/n,r:sc.r,score:score};
+    }
+    /* آستانه‌ی سخت‌گیرانه‌تر از لمس: اینجا جای درست بودن مهم‌تر از قفل‌شدن است */
+    if(best&&best.score>=0.34){lockBallAt(best.x,best.y,best.r);}
+  }catch(e){}
+}
 function resetShot(){
   if(endTimer){clearTimeout(endTimer);endTimer=null;stopRec();}
   cardHtml=null;lastSaved=false;hintBall=null;
   ball=null;prevCand=null;ballStable=0;trail=[];prevGray=null;vel={x:0,y:0};
   outN=0;lowRun=0;detectMiss=0;lowThr=false;clubSeen=false;clubBox=null;impactCnt=0;
   setPhase('detect');
+  stickyWait=40; /* بعد از ~۰.۷ ثانیه re-lock خودکار */
 }
 let wakeLock=null,camDenied=false;
 $('btnAR').onclick=async()=>{
@@ -698,6 +746,7 @@ function detectStep(gray){
 /* قفل دستی هوشمند: حتی اگر نزدیک توپ بزنی، خودِ توپ قفل می‌شود */
 function lockBallAt(bx,by,r){
   pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
+  stickyLock={x:bx,y:by,r:r,t:performance.now()};
   ball={x:bx,y:by,d:r*2,r:r};
   seedCol=sampleColor(bx,by);
   vel={x:0,y:0};lostN=0;outN=0;lowRun=0;kf=makeKF(bx,by,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;trail=[{x:bx,y:by}];apexY=by;
@@ -1319,7 +1368,13 @@ function updPanels(dt){
     calibEl.style.display='block';
     calibEl.classList.add('mini');
     const lightOk=lastLumaAvg>0.03&&lastLumaAvg<0.985;
-    calibEl.innerHTML=lightOk?'TAP ON THE BALL':'LOW LIGHT — TAP ON BALL';
+    if(stickyWait>0){
+      stickyWait--;
+      calibEl.innerHTML='RELOCKING…';
+      if(stickyWait===0){try{tryStickyRelock();}catch(e){}}
+    }else{
+      calibEl.innerHTML=lightOk?'TAP ON THE BALL':'LOW LIGHT — TAP ON BALL';
+    }
     if(frameCount%12===0){try{hintBall=scanBallHint();}catch(e){hintBall=null;}}
   }else if(phase==='armed'){
     calibEl.style.display='block';
