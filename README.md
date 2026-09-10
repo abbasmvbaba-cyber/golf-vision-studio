@@ -85,6 +85,11 @@ index.html   ← کل اپ (HTML + CSS + JS در یک فایل)
 
 **نیاز به iOS بومی (Phase بعدی):** 240fps با AVFoundation، YOLO CoreML، ARKit/LiDAR، و تست‌های XCTest فیزیک.
 
+## 📱 نسخه‌ی بومی iOS
+
+اسکلت کامل پروژه‌ی Xcode (Swift/SwiftUI — کالمن، فیزیک درگ+مگنوس، Player Intelligence، XCTest):
+**[golf-vision-ios](https://github.com/abbasmvbaba-cyber/golf-vision-ios)**
+
 ## 📄 مجوز
 
 MIT — آزاد برای استفاده، تغییر و انتشار.
