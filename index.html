@@ -348,8 +348,6 @@ let ball=null,ballStable=0,prevCand=null,pxPerMeter=80;
 let prevGray=null,clubSeen=false,clubBox=null;
 let vel={x:0,y:0},lostN=0,tImpact=0,trail=[],seedCol=[245,245,245];
 let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=false,lastGray=null;
-let stickyLock=null; /* قفل چسبان: جای قفل قبلی — ضربه‌ی بعدی خودش همان‌جا قفل می‌شود */
-let stickyWait=0;
 let kf=null,trackMatched=0,trackTotal=0,predPts=null;
 /* تنظیمات کاربر — واحدها و رنگ‌ها (ذخیره‌ی دائمی) */
 const SET=(function(){
@@ -545,58 +543,12 @@ async function startCam(){
   }
 }
 function startDemo(){toast('دمو در این نسخه حذف شد — دوربین واقعی فعال است');}
-function tryStickyRelock(){
-  /* قفل چسبان: تا ۵ دقیقه بعد از قفل قبلی، اگر توپ‌مانندی همان حوالی بود، خودش قفل کن */
-  try{
-    if(!stickyLock||!lastGray||mode==='none')return;
-    if(performance.now()-stickyLock.t>300000){stickyLock=null;return;}
-    const g=lastGray,AW2=AW,AH2=AH;
-    const cx=stickyLock.x,cy=stickyLock.y,R=Math.max(14,stickyLock.r*3.5);
-    const x0=Math.max(1,Math.round(cx-R)),x1=Math.min(AW2-2,Math.round(cx+R));
-    const y0=Math.max(1,Math.round(cy-R)),y1=Math.min(AH2-2,Math.round(cy+R));
-    let sum=0,cnt=0;
-    for(let y=y0;y<=y1;y+=2)for(let x=x0;x<=x1;x+=2){sum+=g[y*AW2+x];cnt++;}
-    const mean=sum/Math.max(1,cnt);
-    const thr=clampN(mean+0.18,0.45,0.9);
-    const visited=new Uint8Array(AW2*AH2);
-    let best=null;
-    for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
-      const i0=y*AW2+x;
-      if(visited[i0]||g[i0]<thr)continue;
-      const qx=[x],qy=[y];visited[i0]=1;
-      let n=0,sx=0,sy=0,minx=x,maxx=x,miny=y,maxy=y,peak=0;
-      while(qx.length&&n<=900){
-        const cx2=qx.pop(),cy2=qy.pop();
-        n++;sx+=cx2;sy+=cy2;
-        const lv=g[cy2*AW2+cx2];if(lv>peak)peak=lv;
-        if(cx2<minx)minx=cx2;if(cx2>maxx)maxx=cx2;
-        if(cy2<miny)miny=cy2;if(cy2>maxy)maxy=cy2;
-        for(let k=0;k<4;k++){
-          const nx=cx2+(k===0?1:(k===1?-1:0)),ny=cy2+(k===2?1:(k===3?-1:0));
-          if(nx<1||ny<1||nx>=AW2-1||ny>=AH2-1)continue;
-          const ni=ny*AW2+nx;
-          if(visited[ni]||g[ni]<thr-0.09)continue;
-          visited[ni]=1;qx.push(nx);qy.push(ny);
-        }
-      }
-      if(n<3||n>900)continue;
-      const sc=blobScore(g,AW2,AH2,sx/n,sy/n,n,minx,miny,maxx,maxy,peak);
-      if(!sc)continue;
-      const distPen=1-Math.min(1,Math.hypot(sx/n-cx,sy/n-cy)/R);
-      const score=sc.score*0.86+0.14*distPen;
-      if(!best||score>best.score)best={x:sx/n,y:sy/n,r:sc.r,score:score};
-    }
-    /* آستانه‌ی سخت‌گیرانه‌تر از لمس: اینجا جای درست بودن مهم‌تر از قفل‌شدن است */
-    if(best&&best.score>=0.34){lockBallAt(best.x,best.y,best.r);}
-  }catch(e){}
-}
 function resetShot(){
   if(endTimer){clearTimeout(endTimer);endTimer=null;stopRec();}
-  cardHtml=null;lastSaved=false;hintBall=null;
+  cardHtml=null;lastSaved=false;
   ball=null;prevCand=null;ballStable=0;trail=[];prevGray=null;vel={x:0,y:0};
   outN=0;lowRun=0;detectMiss=0;lowThr=false;clubSeen=false;clubBox=null;impactCnt=0;
   setPhase('detect');
-  stickyWait=40; /* بعد از ~۰.۷ ثانیه re-lock خودکار */
 }
 let wakeLock=null,camDenied=false;
 $('btnAR').onclick=async()=>{
@@ -743,141 +695,26 @@ function detectStep(gray){
   prevCand=best;
   /* قفل فقط با لمس کاربر — detection فقط کمکی است */
 }
-/* قفل دستی هوشمند: حتی اگر نزدیک توپ بزنی، خودِ توپ قفل می‌شود */
-function lockBallAt(bx,by,r){
+/* قفل دستی: ساده و قطعی — روشن‌ترین نقطه‌ی اطراف لمس + اندازه از همون حوالی */
+function manualLock(cxp,cyp){
+  if(!lastGray)return;
+  let bl=0,bx=cxp,by=cyp;
+  for(let dy=-10;dy<=10;dy++)for(let dx=-10;dx<=10;dx++){
+    const x=clampN(Math.round(cxp+dx),0,AW-1),y=clampN(Math.round(cyp+dy),0,AH-1);
+    const l=lastGray[y*AW+x];if(l>bl){bl=l;bx=x;by=y;}
+  }
+  let cnt=0;
+  for(let dy=-16;dy<=16;dy++)for(let dx=-16;dx<=16;dx++){
+    const x=clampN(bx+dx,0,AW-1),y=clampN(by+dy,0,AH-1);
+    if(lastGray[y*AW+x]>bl-0.28)cnt++;
+  }
+  const r=clampN(Math.sqrt(cnt/Math.PI),2,60);
   pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
-  stickyLock={x:bx,y:by,r:r,t:performance.now()};
   ball={x:bx,y:by,d:r*2,r:r};
   seedCol=sampleColor(bx,by);
   vel={x:0,y:0};lostN=0;outN=0;lowRun=0;kf=makeKF(bx,by,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;trail=[{x:bx,y:by}];apexY=by;
   prevGray=lastGray;armGrace=performance.now()+450;
-  hintBall=null;
   setPhase('armed');beep(880);
-}
-/* امتیاز توپ‌مانندی یک بلاب: کنتراست حلقه + گردی + اندازه‌ی معقول */
-function blobScore(g,W,H,sx,sy,n,minx,miny,maxx,maxy,peak){
-  const w=maxx-minx+1,h=maxy-miny+1;if(w<2||h<2)return null;
-  const r=(w+h)/4,ar=w/h;
-  const fill=n/(Math.PI*r*r);
-  const roundRaw=Math.max(0,1-Math.abs(ar-1))*clampN(fill/0.75,0,1);
-  const round=Math.max(r<4.5?0.5:0,roundRaw); /* توپِ دورِ ریز: نویز پیکسلی گردی را نفی نمی‌کند */
-  let ringSum=0,ringCnt=0;const RR=Math.max(3,Math.round(r*1.8));
-  for(let a=0;a<12;a++){
-    const ax2=Math.round(sx+Math.cos(a/12*6.283)*RR),ay2=Math.round(sy+Math.sin(a/12*6.283)*RR);
-    if(ax2>0&&ay2>0&&ax2<W&&ay2<H){ringSum+=g[ay2*W+ax2];ringCnt++;}
-  }
-  const ring=ringCnt?ringSum/ringCnt:0.5;
-  const contrast=clampN((peak-ring)*2.2,0,1);
-  const sizeOk=(r>=1.5&&r<=42)?1:0.12;
-  return {r:r,score:0.42*contrast+0.33*round+0.25*peak*sizeOk};
-}
-/* جستجوی بلاب توپ‌مانند دور نقطه‌ی لمس — روی هر بافت خاکستری (عمومی) */
-function smartBlobSearch(g,W,H,cxp,cyp,SR){
-  const x0=Math.max(1,Math.round(cxp-SR)),x1=Math.min(W-2,Math.round(cxp+SR));
-  const y0=Math.max(1,Math.round(cyp-SR)),y1=Math.min(H-2,Math.round(cyp+SR));
-  let sum=0,cnt=0;
-  for(let y=y0;y<=y1;y+=2)for(let x=x0;x<=x1;x+=2){sum+=g[y*W+x];cnt++;}
-  const mean=sum/Math.max(1,cnt);
-  const thr=clampN(mean+0.18,0.45,0.9);
-  const visited=new Uint8Array(W*H);
-  let best=null;
-  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
-    const i0=y*W+x;
-    if(visited[i0]||g[i0]<thr)continue;
-    const qx=[x],qy=[y];visited[i0]=1;
-    let n=0,sx=0,sy=0,minx=x,maxx=x,miny=y,maxy=y,peak=0;
-    while(qx.length&&n<=900){
-      const cx2=qx.pop(),cy2=qy.pop();
-      n++;sx+=cx2;sy+=cy2;
-      const lv=g[cy2*W+cx2];if(lv>peak)peak=lv;
-      if(cx2<minx)minx=cx2;if(cx2>maxx)maxx=cx2;
-      if(cy2<miny)miny=cy2;if(cy2>maxy)maxy=cy2;
-      for(let k=0;k<4;k++){
-        const nx=cx2+(k===0?1:(k===1?-1:0)),ny=cy2+(k===2?1:(k===3?-1:0));
-        if(nx<1||ny<1||nx>=W-1||ny>=H-1)continue;
-        const ni=ny*W+nx;
-        if(visited[ni]||g[ni]<thr-0.09)continue;
-        visited[ni]=1;qx.push(nx);qy.push(ny);
-      }
-    }
-    if(n<3||n>900)continue; /* بلاب‌های ریزِ توپِ دور مجازند؛ بزرگ‌ها (دیوار/لباس) رد */
-    const sc=blobScore(g,W,H,sx/n,sy/n,n,minx,miny,maxx,maxy,peak);
-    if(!sc)continue;
-    const distPen=1-Math.min(1,Math.hypot(sx/n-cxp,sy/n-cyp)/SR);
-    const score=sc.score*0.86+0.14*distPen;
-    if(!best||score>best.score)best={x:sx/n,y:sy/n,r:sc.r,score:score};
-  }
-  return best;
-}
-/* لمس دقیق: برش ۱۲۸px از فریم اصلی دوربین (۴× ریزتر از بوم تحلیل) — توپ در ۱متر+ */
-const tapCv=document.createElement('canvas');tapCv.width=128;tapCv.height=128;
-const tapCx=tapCv.getContext('2d',{willReadFrequently:true});
-function precisionLock(cxp,cyp){
-  try{
-    if(mode!=='cam'||!vid.readyState||vid.readyState<2||!vid.videoWidth)return false;
-    const vw=vid.videoWidth,vh=vid.videoHeight;
-    const nx=cxp/AW*vw,ny=cyp/AH*vh;
-    const S=128;
-    const sx=clampN(Math.round(nx-S/2),0,Math.max(0,vw-S));
-    const sy=clampN(Math.round(ny-S/2),0,Math.max(0,vh-S));
-    tapCx.save();
-    if(facing==='user'){tapCx.translate(S,0);tapCx.scale(-1,1);}
-    tapCx.drawImage(vid,sx,sy,S,S,0,0,S,S);
-    tapCx.restore();
-    const d=tapCx.getImageData(0,0,S,S).data;
-    const g=new Float32Array(S*S);
-    for(let i=0;i<S*S;i++)g[i]=(d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114)/255;
-    const found=smartBlobSearch(g,S,S,nx-sx,ny-sy,48);
-    if(found&&found.score>=0.30){
-      lockBallAt(found.x/S*AW,found.y/S*AH,clampN(found.r*AW/vw,1.5,60));
-      return true;
-    }
-  }catch(e){}
-  return false;
-}
-function manualLock(cxp,cyp){
-  if(!lastGray)return;
-  if(precisionLock(cxp,cyp))return; /* اول رزولوشن اصلی — توپ دور */
-  const best=smartBlobSearch(lastGray,AW,AH,cxp,cyp,36);
-  if(best&&best.score>=0.28){lockBallAt(best.x,best.y,best.r);return;}
-  if(best){lockBallAt(best.x,best.y,best.r);return;}
-  let bl=0,bx=cxp,by=cyp;
-  for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
-    const x=clampN(Math.round(cxp+dx),0,AW-1),y=clampN(Math.round(cyp+dy),0,AH-1);
-    const l=lastGray[y*AW+x];if(l>bl){bl=l;bx=x;by=y;}
-  }
-  lockBallAt(bx,by,6);
-}
-/* راهنما: بهترین نامزد توپ در کل کادر (فقط نمایش — قفل همچنان با لمس) */
-let hintBall=null;
-function scanBallHint(){
-  if(!lastGray)return null;
-  const thr=0.55;const visited=new Uint8Array(AW*AH);const cands=[];
-  for(let y=2;y<AH-2;y+=2)for(let x=2;x<AW-2;x+=2){
-    const i0=y*AW+x;
-    if(visited[i0]||lastGray[i0]<thr)continue;
-    const qx=[x],qy=[y];visited[i0]=1;
-    let n=0,sx=0,sy=0,minx=x,maxx=x,miny=y,maxy=y,peak=0;
-    while(qx.length&&n<=900){
-      const cx2=qx.pop(),cy2=qy.pop();
-      n++;sx+=cx2;sy+=cy2;
-      const lv=lastGray[cy2*AW+cx2];if(lv>peak)peak=lv;
-      if(cx2<minx)minx=cx2;if(cx2>maxx)maxx=cx2;
-      if(cy2<miny)miny=cy2;if(cy2>maxy)maxy=cy2;
-      for(let k=0;k<4;k++){
-        const nx=cx2+(k===0?1:(k===1?-1:0)),ny=cy2+(k===2?1:(k===3?-1:0));
-        if(nx<1||ny<1||nx>=AW-1||ny>=AH-1)continue;
-        const ni=ny*AW+nx;
-        if(visited[ni]||lastGray[ni]<thr-0.12)continue;
-        visited[ni]=1;qx.push(nx);qy.push(ny);
-      }
-    }
-    if(n<3||n>900)continue;
-    const sc=blobScore(lastGray,AW,AH,sx/n,sy/n,n,minx,miny,maxx,maxy,peak);
-    if(sc&&sc.score>0.48)cands.push({x:sx/n,y:sy/n,r:sc.r,score:sc.score});
-  }
-  cands.sort((a,b)=>b.score-a.score);
-  return cands[0]||null;
 }
 function sampleColor(x,y){
   try{
@@ -1368,14 +1205,7 @@ function updPanels(dt){
     calibEl.style.display='block';
     calibEl.classList.add('mini');
     const lightOk=lastLumaAvg>0.03&&lastLumaAvg<0.985;
-    if(stickyWait>0){
-      stickyWait--;
-      calibEl.innerHTML='RELOCKING…';
-      if(stickyWait===0){try{tryStickyRelock();}catch(e){}}
-    }else{
-      calibEl.innerHTML=lightOk?'TAP ON THE BALL':'LOW LIGHT — TAP ON BALL';
-    }
-    if(frameCount%12===0){try{hintBall=scanBallHint();}catch(e){hintBall=null;}}
+    calibEl.innerHTML=lightOk?'TAP ON THE BALL':'LOW LIGHT — TAP ON BALL';
   }else if(phase==='armed'){
     calibEl.style.display='block';
     calibEl.innerHTML='PRESS ● TO RECORD';
@@ -1415,17 +1245,6 @@ function loop(ts){
     const dsc=Math.max(cv.width/640,cv.height/360);
     ctx.drawImage(demo.canvas,(cv.width-640*dsc)/2,(cv.height-360*dsc)/2,640*dsc,360*dsc);
     ready=true;
-  }
-  if(ready&&phase==='detect'&&hintBall){
-    ctx.save();ctx.direction='ltr';
-    ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1.5;
-    ctx.setLineDash([5,5]);
-    ctx.beginPath();ctx.arc(hintBall.x*SCX,hintBall.y*SCY,Math.max(9,hintBall.r*Math.min(SCX,SCY))+5,0,7);ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.font='bold 10px Menlo,monospace';ctx.textAlign='center';
-    ctx.fillStyle='rgba(255,255,255,.7)';
-    ctx.fillText('TAP',hintBall.x*SCX,hintBall.y*SCY-hintBall.r*Math.min(SCX,SCY)-9);
-    ctx.restore();
   }
   if(ready)drawWM();
   if(!ready){
