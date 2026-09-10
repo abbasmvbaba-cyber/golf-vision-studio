@@ -325,6 +325,7 @@ function drawWM(){
   if(!wmOk)return;
   const s=cv.height*0.048,x=cv.width/2-s/2,y=cv.height*0.888,r=s*0.24;
   ctx.save();
+  ctx.direction='ltr';
   ctx.beginPath();
   ctx.moveTo(x+r,y);ctx.arcTo(x+s,y,x+s,y+s,r);ctx.arcTo(x+s,y+s,x,y+s,r);ctx.arcTo(x,y+s,x,y,r);ctx.arcTo(x,y,x+s,y,r);ctx.closePath();
   ctx.clip();ctx.drawImage(wmImg,x,y,s,s);ctx.restore();
@@ -918,6 +919,7 @@ function drawEndCard(rows,lost){
     const ch=brandH+hdrH+rows.length*lineH+(lost?lineH:0)+siteH+pad*2;
     const x=(W-cw)/2,y=(H-ch)/2-H*0.03,r=cw*0.075;
     ctx.save();
+    ctx.direction='ltr';
     ctx.fillStyle='rgba(13,17,20,0.82)';
     rrPath(ctx,x,y,cw,ch,r);ctx.fill();
     ctx.strokeStyle='rgba(255,255,255,0.18)';ctx.lineWidth=Math.max(1,cw*0.004);ctx.stroke();
@@ -927,16 +929,23 @@ function drawEndCard(rows,lost){
     ctx.font='600 '+String(Math.round(cw*0.05))+'px Menlo,monospace';
     ctx.fillText('P U T T C L U B   V I S I O N',W/2,y+pad*0.7+cw*0.17+cw*0.08);
     ctx.textAlign='left';ctx.fillStyle='#9fe8c8';
-    ctx.font='600 '+String(Math.round(cw*0.047))+'px Menlo,monospace';
+    ctx.font='bold '+String(Math.round(cw*0.047))+'px Menlo,monospace';
     let ry=y+brandH+pad*0.6;
     ctx.fillText('TRAJECTORY LOCKED ✓',x+pad,ry);ry+=lineH*1.05;
-    ctx.font=String(Math.round(cw*0.051))+'px Menlo,monospace';
+    const fVal='bold '+String(Math.round(cw*0.051))+'px Menlo,monospace';
+    const fTag=String(Math.round(cw*0.037))+'px Menlo,monospace';
     rows.forEach(rw=>{
+      ctx.font=fVal;
       ctx.textAlign='left';ctx.fillStyle='#8fb5c2';ctx.fillText(rw[0],x+pad,ry);
-      ctx.textAlign='right';ctx.fillStyle='#eef7fa';ctx.fillText(rw[1]+(rw[2]?'  ·'+rw[2]:''),x+cw-pad,ry);
+      ctx.textAlign='right';ctx.fillStyle='#f2f9fc';ctx.fillText(rw[1],x+cw-pad,ry);
+      if(rw[2]){
+        const vw=ctx.measureText(rw[1]).width;
+        ctx.font=fTag;ctx.fillStyle='#7fb7cc';
+        ctx.fillText('·'+rw[2],x+cw-pad-vw-cw*0.02,ry);
+      }
       ry+=lineH;
     });
-    if(lost){ctx.textAlign='center';ctx.fillStyle='#ff9f8a';ctx.fillText('X BALL LEFT FRAME',W/2,ry);ry+=lineH;}
+    if(lost){ctx.textAlign='center';ctx.direction='ltr';ctx.fillStyle='#ff9f8a';ctx.font='bold '+String(Math.round(cw*0.045))+'px Menlo,monospace';ctx.fillText('X BALL LEFT FRAME',W/2,ry);ry+=lineH;}
     ry+=lineH*0.1;
     ctx.strokeStyle='rgba(255,255,255,0.14)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x+pad,ry);ctx.lineTo(x+cw-pad,ry);ctx.stroke();
     ctx.textAlign='center';ctx.fillStyle='#8fd8e8';
@@ -1134,6 +1143,7 @@ function drawHud(){
     ctx.beginPath();ctx.arc(lp.x*SCX,lp.y*SCY,br+4,0,7);ctx.stroke();
     /* مسافت زنده‌ی افزایشی زیر توپ — واحد/رنگ از تنظیمات کاربر */
     const label='≈ '+distTxt(distNow,1);
+    ctx.direction='ltr';
     ctx.font='bold 15px Menlo,monospace';
     const w=ctx.measureText(label).width+22;
     const bx=clampN(lp.x*SCX-w/2,6,cv.width-w-6);
