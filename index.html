@@ -124,22 +124,14 @@ input[type=file]{display:none}
 /* --- چیدمان: پنل‌ها پشت کنترل‌ها، بدون تداخل --- */
 #arOverlay .ar-glass,#arFps,#arPipeline{z-index:2}
 #arFps{top:calc(54px + env(safe-area-inset-top))}
-#arPipeline{top:calc(86px + env(safe-area-inset-top));bottom:auto}
-#arCalib{top:calc(86px + env(safe-area-inset-top));left:12px}
-#arStatus{top:calc(86px + env(safe-area-inset-top));right:12px}
 #arMapWrap{top:calc(292px + env(safe-area-inset-top));bottom:auto;right:12px}
 #arSummary{max-width:min(212px,54vw)}
 #arSummary .val{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.4px}
 #arSummary .hdr{font-family:ui-monospace,Menlo,monospace}
 .ar-glass{background:rgba(15,19,23,.74);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:14px}
 #arFps{position:absolute;top:calc(56px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:9.5px;letter-spacing:1.8px;color:rgba(220,240,246,.8);background:rgba(15,19,23,.55);padding:4px 10px;border-radius:99px;display:none;z-index:3;direction:ltr}
-#arCalib{position:absolute;top:calc(88px + env(safe-area-inset-top));left:12px;width:186px;padding:10px 13px;display:none;font-size:10.5px;line-height:2.1;color:#cfe4ec;z-index:3;direction:ltr;text-align:left}
-#arCalib .t,#arStatus .t,#arMapWrap .t{font-size:9px;letter-spacing:2.5px;color:#8fd8e8;margin-bottom:5px}
-#arCalib .ok{color:#9fe8c8}
-#arCalib .ready{display:inline-block;margin-top:5px;background:#7fe0b0;color:#0b1512;font-weight:700;font-size:10px;padding:2px 12px;border-radius:99px;letter-spacing:1px}
-#arStatus{position:absolute;top:calc(88px + env(safe-area-inset-top));right:12px;width:180px;padding:10px 13px;display:none;font-size:10.5px;line-height:2.1;color:#cfe4ec;z-index:3;direction:ltr;text-align:left}
+#arCalib{position:absolute;top:calc(118px + env(safe-area-inset-top));left:12px;width:auto;max-width:70vw;padding:7px 13px;display:none;font-size:10px;letter-spacing:1.6px;color:#cfe4ec;z-index:2;direction:ltr;text-align:left;white-space:nowrap;font-family:Menlo,monospace;border-radius:99px}
 #arStatus .ok{color:#9fe8c8}
-#arPipeline{position:absolute;bottom:calc(118px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:none;font-size:9px;letter-spacing:1.6px;color:rgba(225,244,250,.8);background:rgba(15,19,23,.6);padding:5px 14px;border-radius:99px;white-space:nowrap;direction:ltr;z-index:3}
 #arMapWrap{position:absolute;bottom:calc(170px + env(safe-area-inset-bottom));right:12px;padding:9px 11px;display:none;z-index:3;direction:ltr}
 #arMap{display:block;width:118px;height:140px}
 #arSummary .hdr{font-size:9px;letter-spacing:1.8px;color:#9fe8c8;margin-bottom:5px;text-align:left;direction:ltr;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
@@ -155,7 +147,7 @@ input[type=file]{display:none}
 .ar-gear{position:absolute;top:calc(60px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));width:40px;height:40px;border-radius:50%;border:none;background:rgba(25,25,25,.55);display:none;align-items:center;justify-content:center;color:#cfe4ec;cursor:pointer;z-index:5}
 .ar-gear.show{display:flex}
 .ar-gear .icn{width:19px;height:19px}
-#arSettings{position:absolute;top:calc(108px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));width:min(300px,86vw);padding:14px 16px;display:none;z-index:6;max-height:calc(100dvh - 260px);overflow:auto}
+#arSettings{position:absolute;top:calc(108px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));width:min(280px,78vw);padding:14px 16px;display:none;z-index:6;max-height:calc(100dvh - 300px);overflow:auto}
 #arSettings.show{display:block}
 #arSettings .t{font-size:9px;letter-spacing:2.5px;color:#8fd8e8;margin-bottom:9px;font-family:Menlo,monospace}
 #arSettings .sec{margin-bottom:12px}
@@ -857,8 +849,7 @@ function finishShot(el,reason){
   if(clipUrl)html+='<a class="ar-icbtn" href="'+clipUrl+'" download="golf-shot.webm"><svg class="icn" viewBox="0 0 24 24"><use href="#i-dl"/></svg></a>';
   $('arSummary').innerHTML=html;
   $('arSummary').classList.add('show');
-  mapWrap.style.display='block';drawShotMap();
-}
+  mapWrap.style.display='block';}
 
 /* لمس روی تصویر در حالت جستجو/مسلح = قفل دستی توپ */
 cv.addEventListener('pointerdown',e=>{
@@ -1047,44 +1038,6 @@ function drawHud(){
 /* ---------- پنل‌های پرمیوم: FPS/کالیبراسیون/وضعیت/مینی‌مپ (کانسپت) ---------- */
 const fpsChip=$('arFps'),calibEl=$('arCalib'),statusEl=$('arStatus'),pipeEl=$('arPipeline'),mapWrap=$('arMapWrap'),mapCv=$('arMap');
 const CAL_ITEMS=['CAMERA ALIGNMENT','LIGHTING','GROUND PLANE','BALL POSITION','TARGET LINE'];
-function renderCalib(ok){
-  calibEl.innerHTML='<div class="t">CAMERA CALIBRATION</div>'
-    +CAL_ITEMS.map((c,i)=>'<div class="'+(i<ok?'ok':'')+'">'+(i<ok?'✓':'○')+' '+c+'</div>').join('')
-    +(ok>=5?'<div class="ready">READY TO TRACK</div>':'');
-}
-function drawShotMap(){
-  const g2=mapCv.getContext('2d');const W=mapCv.width,H=mapCv.height;
-  g2.clearRect(0,0,W,H);
-  const shots=loadShots().filter(s=>s.carryM);
-  const pts=shots.map(s=>[(s.lat||0)*YD,s.carryM*YD]);
-  if(lastCarryM>0)pts.push([lastLatM*YD,lastCarryM*YD]);
-  if(!pts.length)return;
-  const maxC=Math.max.apply(null,pts.map(p=>p[1]))+12;
-  const k=(H-34)/maxC,cx0=W/2,by=H-16;
-  /* خط هدف */
-  g2.strokeStyle='rgba(255,255,255,.35)';g2.setLineDash([3,4]);
-  g2.beginPath();g2.moveTo(cx0,by);g2.lineTo(cx0,10);g2.stroke();g2.setLineDash([]);
-  /* نقاط پراکندگی تاریخچه */
-  g2.fillStyle='rgba(143,216,232,.85)';
-  for(const p of pts){
-    if(p[1]===lastCarryM*YD&&p[0]===lastLatM*YD)continue;
-    g2.beginPath();g2.arc(cx0+p[0]*k,by-p[1]*k,1.6,0,7);g2.fill();
-  }
-  /* بیضی پراکندگی ۹۵٪ (mean±2sd) — §28 */
-  if(pts.length>=5){
-    const mx=pts.reduce((a,p)=>a+p[0],0)/pts.length,mc=pts.reduce((a,p)=>a+p[1],0)/pts.length;
-    const sx=Math.sqrt(pts.reduce((a,p)=>a+(p[0]-mx)*(p[0]-mx),0)/pts.length)*2;
-    const sc=Math.sqrt(pts.reduce((a,p)=>a+(p[1]-mc)*(p[1]-mc),0)/pts.length)*2;
-    g2.strokeStyle='rgba(255,255,255,.5)';
-    g2.beginPath();g2.ellipse(cx0+mx*k,by-mc*k,Math.max(6,sx*k),Math.max(8,sc*k),0,0,7);g2.stroke();
-  }
-  /* ضربه‌ی فعلی */
-  if(lastCarryM>0){
-    g2.strokeStyle='#7fe0b0';g2.lineWidth=2;
-    g2.beginPath();g2.moveTo(cx0,by);g2.lineTo(cx0+lastLatM*YD*k,by-lastCarryM*YD*k);g2.stroke();
-    g2.fillStyle='#fff';g2.beginPath();g2.arc(cx0+lastLatM*YD*k,by-lastCarryM*YD*k,2.6,0,7);g2.fill();
-  }
-}
 function updPanels(dt){
   frameCount++;
   const f=dt>0?1/dt:0;fpsEma=fpsEma?fpsEma*0.92+f*0.08:f;
@@ -1098,23 +1051,18 @@ function updPanels(dt){
   }
   if(frameCount%12===0)fpsChip.textContent='≈'+Math.round(fpsEma)+' FPS · FRAME '+String(frameCount%100000).padStart(3,'0');
   fpsChip.style.display='block';
+  /* فقط یک چیپ باریک در فاز شناسایی — هیچ پنل میانی روی تصویر نمی‌آید */
+  $('arSettings').classList.remove('show');
   if(phase==='detect'){
     calibDone=false;
     calibEl.style.display='block';
-    renderCalib(lastLumaAvg>0.03&&lastLumaAvg<0.985?3:2);
-    statusEl.style.display='none';pipeEl.style.display='none';mapWrap.style.display='none';
+    calibEl.classList.add('mini');
+    const lightOk=lastLumaAvg>0.03&&lastLumaAvg<0.985;
+    calibEl.innerHTML=lightOk?'SCANNING FOR BALL…':'LOW LIGHT — MOVE TO LIGHT';
   }else if(phase==='armed'){
-    if(!calibDone){calibDone=true;renderCalib(5);setTimeout(()=>{calibEl.style.display='none';},1300);}
-    statusEl.style.display='none';pipeEl.style.display='none';mapWrap.style.display='none';
-  }else if(phase==='track'){
-    calibEl.style.display='none';pipeEl.style.display='block';mapWrap.style.display='none';
-    statusEl.style.display='block';
-    if(frameCount%10===0){
-      const rows=[['IMPACT DETECTED',true],['CLUB HEAD TRACKED',clubSeen],['BALL TRACKED',lostN<6],['TRAJECTORY LOCKED',trail.length>18]];
-      statusEl.innerHTML='<div class="t">SHOT STATUS</div>'+rows.map(r=>'<div class="'+(r[1]?'ok':'')+'">'+(r[1]?'✓':'○')+' '+r[0]+'</div>').join('');
-    }
-  }else if(phase==='done'){
-    calibEl.style.display='none';statusEl.style.display='none';pipeEl.style.display='block';
+    if(!calibDone){calibDone=true;calibEl.innerHTML='BALL LOCKED — READY';setTimeout(()=>{calibEl.style.display='none';},1200);}
+  }else{
+    calibEl.style.display='none';
   }
 }
 
