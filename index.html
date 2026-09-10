@@ -510,6 +510,8 @@ function stopAll(){
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
   stopRec();
   vid.srcObject=null;demo=null;mode='none';
+  try{if(stickyTimer){clearTimeout(stickyTimer);stickyTimer=null;}}catch(e){}
+  sticky=null;
   ball=null;prevGray=null;prevCand=null;ballStable=0;trail=[];clubSeen=false;clubBox=null;
   $('arStBall').className='ar-chipic';$('arStClub').className='ar-chipic';
   $('arShutter').classList.remove('rec','done');
@@ -543,9 +545,47 @@ async function startCam(){
   }
 }
 function startDemo(){toast('دمو در این نسخه حذف شد — دوربین واقعی فعال است');}
+/* قفل چسبان: ۵ ثانیه بعد از ریست، اگر دوربین باز است و همان حوالی توپ ماند، خودش قفل می‌کند.
+   کاملاً جدا از لمس — بعد از آن کاربر همچنان می‌تواند لمس کند و قفل جدید بزند. */
+let sticky=null,stickyTimer=null;
+function stickyRelock(){
+  stickyTimer=null;
+  try{
+    if(!sticky||!lastGray||mode==='none'||phase!=='detect')return;
+    if(performance.now()-sticky.t>5000){sticky=null;return;}
+    let bl=0,bx=sticky.x,by=sticky.y;
+    const R=8;
+    for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){
+      const x=clampN(Math.round(sticky.x+dx),0,AW-1),y=clampN(Math.round(sticky.y+dy),0,AH-1);
+      const l=lastGray[y*AW+x];if(l>bl){bl=l;bx=x;by=y;}
+    }
+    /* فقط اگر آن حوالی واقعاً روشن (توپ هنوز آنجاست) */
+    if(bl>=0.62){
+      let cnt=0;
+      for(let dy=-16;dy<=16;dy++)for(let dx=-16;dx<=16;dx++){
+        const x=clampN(bx+dx,0,AW-1),y=clampN(by+dy,0,AH-1);
+        if(lastGray[y*AW+x]>bl-0.28)cnt++;
+      }
+      const r=clampN(Math.sqrt(cnt/Math.PI),2,60);
+      pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
+      ball={x:bx,y:by,d:r*2,r:r};
+      seedCol=sampleColor(bx,by);
+      vel={x:0,y:0};lostN=0;outN=0;lowRun=0;kf=makeKF(bx,by,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;trail=[{x:bx,y:by}];apexY=by;
+      prevGray=lastGray;armGrace=performance.now()+450;
+      setPhase('armed');beep(880);
+      sticky=null;
+    }
+  }catch(e){}
+}
 function resetShot(){
   if(endTimer){clearTimeout(endTimer);endTimer=null;stopRec();}
   cardHtml=null;lastSaved=false;
+  /* برنامه‌ریزی قفل چسبان: ۵ ثانیه بعد (فقط اگر خود کاربر تا آن موقع قفل نکرده باشد) */
+  try{
+    if(ball){sticky={x:ball.x,y:ball.y,r:ball.r,t:performance.now()};}
+    if(stickyTimer){clearTimeout(stickyTimer);}
+    stickyTimer=setTimeout(stickyRelock,5000);
+  }catch(e){}
   ball=null;prevCand=null;ballStable=0;trail=[];prevGray=null;vel={x:0,y:0};
   outN=0;lowRun=0;detectMiss=0;lowThr=false;clubSeen=false;clubBox=null;impactCnt=0;
   setPhase('detect');
@@ -710,6 +750,8 @@ function manualLock(cxp,cyp){
   }
   const r=clampN(Math.sqrt(cnt/Math.PI),2,60);
   pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
+  if(stickyTimer){clearTimeout(stickyTimer);stickyTimer=null;}
+  sticky=null;
   ball={x:bx,y:by,d:r*2,r:r};
   seedCol=sampleColor(bx,by);
   vel={x:0,y:0};lostN=0;outN=0;lowRun=0;kf=makeKF(bx,by,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;trail=[{x:bx,y:by}];apexY=by;
