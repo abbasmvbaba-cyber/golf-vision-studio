@@ -58,32 +58,46 @@ h2{font-size:17px;margin:4px 0 12px}
 footer{padding:16px 22px;color:#5f7a6d;font-size:12px;border-top:1px solid #1f2e27;margin-top:20px;text-align:center;line-height:2}
 input[type=file]{display:none}
 
-/* ================= اپ دوربین AR ================= */
+/* ================= اپ دوربین AR (iOS-style — فقط آیکون) ================= */
 .ar-open-btn{font-size:14px;padding:10px 20px}
-#arOverlay{position:fixed;inset:0;background:#000;z-index:500;display:none}
+#arOverlay{position:fixed;inset:0;background:#000;z-index:500;display:none;user-select:none;-webkit-user-select:none;touch-action:manipulation}
 #arOverlay.on{display:block}
 .ar-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
 #arCanvas{width:min(100vw,calc(100vh*16/9));height:min(100vh,calc(100vw*9/16));background:#000}
 #arVideo{position:absolute;width:2px;height:2px;opacity:0;pointer-events:none}
-.ar-topbar{position:absolute;top:10px;right:12px;left:60px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;z-index:2}
-#arOverlay .chip{background:rgba(10,25,18,.78)}
-.ar-hint{position:absolute;top:54px;right:0;left:0;text-align:center;color:#eafff4;font-size:14px;text-shadow:0 1px 6px #000;padding:0 14px;z-index:2}
-.ar-rec{position:absolute;top:16px;left:50%;transform:translateX(-50%);color:#ff5d5d;font-weight:bold;font-size:13px;display:none;letter-spacing:1px;z-index:2}
-.ar-rec.show{display:block;animation:arblink 1s infinite}
-@keyframes arblink{50%{opacity:.2}}
-.ar-bottombar{position:absolute;bottom:20px;right:0;left:0;display:flex;align-items:center;justify-content:center;gap:30px;z-index:2}
-.ar-shutter{width:80px;height:80px;border-radius:50%;border:4px solid #fff;background:rgba(255,255,255,.15);cursor:pointer;padding:0}
-.ar-shutter span{display:block;width:58px;height:58px;border-radius:50%;background:#ff4545;margin:0 auto;transition:transform .15s,background .2s}
+.ar-island{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#000;border-radius:99px;padding:9px 28px;z-index:3;box-shadow:0 0 0 1px rgba(255,255,255,.07)}
+.ar-island i{width:8px;height:8px;border-radius:50%;background:#34c759;display:block}
+.ar-close{position:absolute;top:14px;left:14px;width:34px;height:34px;border-radius:50%;border:none;background:rgba(25,25,25,.55);color:#fff;font-size:15px;cursor:pointer;z-index:3}
+.ar-badge{position:absolute;top:14px;left:58px;background:rgba(25,25,25,.55);color:#ffd166;font-size:12px;font-weight:700;padding:7px 12px;border-radius:99px;z-index:3}
+.ar-topright{position:absolute;top:12px;right:14px;display:flex;gap:10px;align-items:center;z-index:3}
+.ar-chipic{width:34px;height:34px;border-radius:50%;background:rgba(25,25,25,.55);display:flex;align-items:center;justify-content:center;font-size:15px;filter:grayscale(1);opacity:.5;transition:all .2s;border:none;cursor:pointer}
+.ar-chipic.ok{filter:none;opacity:1;box-shadow:0 0 0 2px rgba(52,199,89,.9)}
+.ar-chipic.warn{filter:none;opacity:1;box-shadow:0 0 0 2px rgba(255,159,67,.9)}
+.ar-dot{width:10px;height:10px;border-radius:50%;background:#ff4545;display:none;animation:arblink 1s infinite}
+.ar-dot.show{display:block}
+@keyframes arblink{50%{opacity:.15}}
+#arFlash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .35s;z-index:4}
+.ar-zoom{position:absolute;bottom:170px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:3}
+.ar-zoom button{width:40px;height:40px;border-radius:50%;border:none;background:rgba(30,30,30,.6);color:#fff;font-size:12px;font-weight:700;cursor:pointer;transition:transform .15s}
+.ar-zoom button.on{background:rgba(0,0,0,.88);color:#ffd166;transform:scale(1.15)}
+.ar-modes{position:absolute;bottom:128px;left:50%;transform:translateX(-50%);display:flex;gap:28px;z-index:3}
+.ar-modes span{color:rgba(255,255,255,.55);font-size:12px;font-weight:700;letter-spacing:1.5px;cursor:pointer;padding:4px 2px}
+.ar-modes span.on{color:#ffd166}
+.ar-shutter{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);width:76px;height:76px;border-radius:50%;border:4px solid #fff;background:transparent;cursor:pointer;padding:0;z-index:3}
+.ar-shutter span{display:block;width:58px;height:58px;border-radius:50%;background:#fff;margin:0 auto;transition:background .2s,transform .12s}
 .ar-shutter:active span{transform:scale(.88)}
-.ar-shutter.done span{background:#39d98a}
-.ar-mini{width:52px;height:52px;border-radius:50%;border:2px solid rgba(255,255,255,.5);background:rgba(0,0,0,.35);color:#fff;font-size:20px;cursor:pointer}
-.ar-close{position:absolute;top:10px;left:12px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(0,0,0,.45);color:#fff;font-size:17px;cursor:pointer;z-index:3}
-.ar-summary{position:absolute;top:44%;left:50%;transform:translate(-50%,-50%);background:rgba(8,20,14,.93);border:1px solid #2b6b50;border-radius:16px;padding:18px 26px;color:#e8f3ec;text-align:center;min-width:260px;display:none;z-index:3}
-.ar-summary.show{display:block}
-.ar-summary h3{margin:0 0 8px;color:#39d98a;font-size:16px}
-.ar-summary .big{font-size:32px;color:#ffd166;font-weight:bold;margin:4px 0}
-.ar-summary .sub2{font-size:13px;color:#9db8aa;line-height:2.1}
-.ar-summary a{display:inline-block;margin-top:10px}
+.ar-shutter.rec span{background:#ff4545;animation:arblink 1.2s infinite}
+.ar-shutter.done span{background:#34c759}
+.ar-shutter.done::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;font-weight:bold}
+.ar-thumb{position:absolute;bottom:30px;left:22px;width:54px;height:54px;border-radius:12px;border:2px solid rgba(255,255,255,.7);background:#111 center/cover no-repeat;cursor:pointer;z-index:3;display:none}
+.ar-thumb.show{display:block}
+.ar-flip{position:absolute;bottom:38px;right:24px;width:50px;height:50px;border-radius:50%;border:none;background:rgba(40,40,40,.65);color:#fff;font-size:22px;cursor:pointer;z-index:3}
+.ar-icbtn{display:inline-flex;width:42px;height:42px;border-radius:50%;background:#173a2c;border:1px solid #2b6b50;color:#dff5ea;align-items:center;justify-content:center;font-size:18px;text-decoration:none;cursor:pointer;margin-top:10px}
+#arSummary{position:absolute;top:42%;left:50%;transform:translate(-50%,-50%);background:rgba(10,10,12,.9);border:1px solid rgba(255,255,255,.14);border-radius:20px;padding:18px 32px;color:#fff;text-align:center;min-width:210px;display:none;z-index:4}
+#arSummary.show{display:block}
+#arSummary .big{font-size:38px;font-weight:800;color:#ffd166}
+#arSummary .big small{font-size:16px;color:rgba(255,255,255,.7);font-weight:600}
+#arSummary .sub2{font-size:14px;color:rgba(255,255,255,.75);margin-top:4px}
 </style>
 </head>
 <body>
@@ -251,24 +265,33 @@ input[type=file]{display:none}
 
 <footer>ساخته‌شده به‌عنوان نمونه‌ی فناوری — تمام پردازش‌ها داخل مرورگر تو اجرا می‌شود و هیچ ویدیویی جایی آپلود نمی‌شود. برای دوربین زنده و دانلود خروجی، فایل را دانلود و در کروم باز کن.</footer>
 
-<!-- ============ اپ دوربین تمام‌صفحه (AR Live) ============ -->
+<!-- ============ اپ دوربین تمام‌صفحه (iOS-style) ============ -->
 <div id="arOverlay">
   <video id="arVideo" playsinline muted></video>
   <div class="ar-stage"><canvas id="arCanvas" width="960" height="540"></canvas></div>
-  <div class="ar-topbar">
-    <span id="arChipPhase" class="chip ok">خاموش</span>
-    <span id="arChipBall" class="chip">توپ: —</span>
-    <span id="arChipClub" class="chip">کلاب: —</span>
-  </div>
+  <div class="ar-island"><i></i></div>
   <button id="arClose" class="ar-close">✕</button>
-  <div id="arHint" class="ar-hint"></div>
-  <div id="arRec" class="ar-rec">● REC</div>
-  <div id="arSummary" class="ar-summary"></div>
-  <div class="ar-bottombar">
-    <button id="arFlip" class="ar-mini" title="تغییر دوربین">🔄</button>
-    <button id="arShutter" class="ar-shutter" title="شروع / ضربه‌ی بعدی"><span></span></button>
-    <button id="arDemo" class="ar-mini" title="حالت نمایشی (بدون دوربین)">🎬</button>
+  <div class="ar-badge">⛳ AR</div>
+  <div class="ar-topright">
+    <span id="arStRec" class="ar-dot"></span>
+    <button id="arDemo" class="ar-chipic" title="demo">🎬</button>
+    <span id="arStClub" class="ar-chipic">🥍</span>
+    <span id="arStBall" class="ar-chipic">⛳</span>
   </div>
+  <div id="arFlash"></div>
+  <div class="ar-zoom" id="arZoom">
+    <button data-z="1" class="on">1×</button>
+    <button data-z="2">2×</button>
+    <button data-z="3">3×</button>
+  </div>
+  <div class="ar-modes">
+    <span id="arModeTrace" class="on">TRACE</span>
+    <span id="arModePhoto">PHOTO</span>
+  </div>
+  <button id="arThumb" class="ar-thumb"></button>
+  <button id="arShutter" class="ar-shutter"><span></span></button>
+  <button id="arFlip" class="ar-flip">⟳</button>
+  <div id="arSummary"></div>
 </div>
 
 <div id="toast" class="toast"></div>
@@ -968,10 +991,8 @@ addLog('خوش آمدی! دموی درایو آماده است — پخش را �
 </script>
 <script>
 "use strict";
-/* ================= اپ دوربین تمام‌صفحه: شناسایی + ردیابی زنده (AR Live) ================= */
-/* تکنیک‌ها: شناسایی توپ = «هسته‌ی روشن + حلقه‌ی تیره‌تر» (شبیه توپ ۴۲.۷mm گلف)
-   کالیبراسیون مسافت = قطر توپ در تصویر (مثل Rapsodo) — کلاب = ناحیه‌ی حرکت نزدیک توپ
-   ردیابی پرواز = جستجوی محدوده‌ی تطبیقی + رنگ قفل‌شده + پیش‌بینی سرعت (کالمن ساده) */
+/* ================= اپ دوربین تمام‌صفحه (iOS-style — فقط آیکون) ================= */
+/* شناسایی توپ: هسته‌ی روشن + حلقه‌ی تیره‌تر | کلاب: ناحیه‌ی حرکت | مسافت: کالیبراسیون قطر توپ 42.67mm */
 (function(){
 const $=id=>document.getElementById(id);
 const faNum=s=>String(s).replace(/\d/g,d=>'۰۱۲۳۴۵۶۷۸۹'[d]);
@@ -981,14 +1002,14 @@ const AW=320,AH=180,SC=cv.width/AW;
 const anA=document.createElement('canvas');anA.width=AW;anA.height=AH;
 const ax=anA.getContext('2d',{willReadFrequently:true});
 const vid=$('arVideo');
-let mode='none',stream=null,facing='environment';
+let mode='none',stream=null,facing='environment',zoom=1,photoMode=false;
 let demo=null,demoT=0;
 let phase='off'; /* off | detect | armed | track | done */
 let ball=null,ballStable=0,prevCand=null,pxPerMeter=80;
 let prevGray=null,clubSeen=false,clubBox=null;
 let vel={x:0,y:0},lostN=0,tImpact=0,trail=[],seedCol=[245,245,245];
 let apexY=0,distNow=0,lastSpd=0;
-let rec=null,chunks=[],clipUrl=null,beepCtx=null;
+let rec=null,chunks=[],clipUrl=null,lastMedia=null,beepCtx=null;
 
 function beep(f){
   try{
@@ -999,30 +1020,22 @@ function beep(f){
     o.start();o.stop(beepCtx.currentTime+0.09);
   }catch(e){}
 }
+function setChips(){
+  $('arStBall').className='ar-chipic'+(ball?' ok':'');
+  $('arStClub').className='ar-chipic'+(clubSeen?' warn':'');
+  $('arShutter').className='ar-shutter'+(phase==='track'?' rec':(phase==='done'?' done':''));
+}
 function setPhase(p){
   phase=p;
-  const L={off:'خاموش',detect:'🔍 شناسایی توپ',armed:'🎯 منتظر ضربه',track:'⛳ ردیابی ضربه',done:'✅ ثبت شد'};
-  $('arChipPhase').textContent=L[p]||p;
-  $('arChipPhase').className='chip '+(p==='track'?'warn':(p==='done'||p==='armed'?'ok':''));
-  const H={
-    off:'دکمه‌ی قرمز = روشن کردن دوربین',
-    detect:'گوشی را ثابت بگیر؛ توپ را جلوی دوربین بگیر تا قفل شود…',
-    armed:'قفل شد! از کنار گوشی ضربه بزن — خودش لحظه‌ی ضربه را می‌فهمد',
-    track:'در حال ردیابی… مسافتِ زیر توپ، زنده و افزایشی است',
-    done:'دکمه‌ی سبز = ضربه‌ی بعدی'
-  };
-  $('arHint').textContent=H[p]||'';
   if(p==='detect'){
     $('arSummary').classList.remove('show');
     $('arShutter').classList.remove('done');
-    $('arChipClub').textContent='کلاب: —';$('arChipClub').className='chip';
     clubSeen=false;clubBox=null;
   }
-  $('arChipBall').textContent=ball?'توپ: قفل ✓':'توپ: —';
-  $('arChipBall').className='chip '+(ball?'ok':'');
+  setChips();
 }
 
-/* دموی نمایشی: صحنه‌ی رینگ + توپِ ساکن قبل از ضربه */
+/* دموی نمایشی */
 function makeARDemo(){
   const d=makeDriveDemo(true);
   const g=d.canvas.getContext('2d');
@@ -1041,8 +1054,12 @@ function makeARDemo(){
 function stopAll(){
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
   stopRec();
-  vid.srcObject=null;demo=null;mode='none';
-  ball=null;prevGray=null;prevCand=null;ballStable=0;trail=[];clipUrl=null;
+  vid.srcObject=null;demo=null;mode='none';zoom=1;
+  ball=null;prevGray=null;prevCand=null;ballStable=0;trail=[];clubSeen=false;clubBox=null;
+  $('arStBall').className='ar-chipic';$('arStClub').className='ar-chipic';
+  $('arDemo').classList.remove('ok');
+  $('arZoom').style.display='flex';
+  syncZoomBtns();
 }
 async function startCam(){
   stopAll();
@@ -1054,34 +1071,67 @@ async function startCam(){
 }
 function startDemo(){
   stopAll();mode='demo';demo=makeARDemo();demoT=0;
+  $('arZoom').style.display='none';
+  $('arDemo').classList.add('ok');
   setPhase('detect');
-  toast('حالت نمایشی: کل چرخه‌ی «شناسایی ← ضربه ← ردیابی ← مسافت» را می‌بینی');
 }
 function resetShot(){
   ball=null;prevCand=null;ballStable=0;trail=[];prevGray=null;vel={x:0,y:0};
   setPhase('detect');
 }
+function syncZoomBtns(){
+  document.querySelectorAll('#arZoom button').forEach(x=>x.classList.toggle('on',parseFloat(x.dataset.z)===zoom));
+}
 $('btnAR').onclick=()=>{
   $('arOverlay').classList.add('on');
   if(mode==='none'){
     if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)setPhase('off');
-    else{toast('اینجا دوربین در دسترس نیست — حالت نمایشی اجرا می‌شود');startDemo();}
+    else{toast('اینجا دوربین در دسترس نیست — حالت نمایشی اجرا شد');startDemo();}
   }
 };
-$('arClose').onclick=()=>{$('arOverlay').classList.remove('on');stopAll();setPhase('off');};
+$('arClose').onclick=()=>{$('arOverlay').classList.remove('on');stopAll();phase='off';};
 $('arShutter').onclick=()=>{
   beep(980);
-  if(phase==='off'||mode==='none'){(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)?startCam():startDemo();}
-  else if(phase==='done')resetShot();
+  if(mode==='none'){(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)?startCam():startDemo();return;}
+  if(photoMode){snapshot();return;}
+  if(phase==='done')resetShot();
 };
-$('arDemo').onclick=()=>{startDemo();};
+$('arDemo').onclick=()=>{beep(700);startDemo();};
 $('arFlip').onclick=async()=>{
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return;
   facing=facing==='environment'?'user':'environment';
   if(mode==='cam')await startCam();
 };
+document.querySelectorAll('#arZoom button').forEach(b=>b.onclick=()=>{
+  if(mode!=='cam')return;
+  zoom=parseFloat(b.dataset.z);syncZoomBtns();beep(500);
+});
+function setMode(photo){
+  photoMode=photo;beep(600);
+  $('arModeTrace').className=photo?'':'on';
+  $('arModePhoto').className=photo?'on':'';
+}
+$('arModeTrace').onclick=()=>setMode(false);
+$('arModePhoto').onclick=()=>setMode(true);
+function setThumb(url){
+  const t=$('arThumb');t.style.backgroundImage='url("'+url+'")';t.classList.add('show');
+}
+$('arThumb').onclick=()=>{
+  if(!lastMedia)return;
+  const a=document.createElement('a');a.href=lastMedia.url;a.download=lastMedia.name;
+  document.body.appendChild(a);a.click();a.remove();
+};
+function snapshot(){
+  try{
+    const url=cv.toDataURL('image/jpeg',0.85);
+    lastMedia={url,name:'golf-photo.jpg'};setThumb(url);
+    const fl=$('arFlash');fl.style.opacity='0.9';
+    setTimeout(()=>fl.style.opacity='0',70);
+    beep(1600);
+  }catch(e){}
+}
 
-/* ---------- فاز ۱: شناسایی توپ (هسته‌ی روشن + حلقه‌ی تیره‌تر) ---------- */
+/* ---------- فاز ۱: شناسایی توپ ---------- */
 function detectStep(gray){
   let best=null;
   for(let cy=8;cy<AH-8;cy+=2)for(let cx=8;cx<AW-8;cx+=2){
@@ -1099,15 +1149,15 @@ function detectStep(gray){
     if(n<8)continue;
     ring/=n;
     const diff=core-ring;
-    if(!isFinite(diff)||diff<0.16)continue; /* خورشید/ابر/رفلکس یکدست هستند و رد می‌شوند */
-    const score=core+diff*2+(cy/AH)*0.5; /* توپ معمولاً پایین کادر است */
+    if(!isFinite(diff)||diff<0.16)continue;
+    const score=core+diff*2+(cy/AH)*0.5;
     if(!best||score>best.score)best={x:cx,y:cy,score};
   }
   if(!best){prevCand=null;ballStable=0;return;}
   if(prevCand&&Math.hypot(best.x-prevCand.x,best.y-prevCand.y)<3)ballStable++;
   else ballStable=1;
   prevCand=best;
-  if(ballStable>=8){ /* ۸ فریم پایدار = قفل */
+  if(ballStable>=8){
     let cnt=0;
     for(let dy=-7;dy<=7;dy++)for(let dx=-7;dx<=7;dx++){
       const yy=best.y+dy,xx=best.x+dx;
@@ -1115,8 +1165,8 @@ function detectStep(gray){
       if(gray[yy*AW+xx]>0.6)cnt++;
     }
     const diam=Math.max(1.8,2*Math.sqrt(cnt/Math.PI));
-    pxPerMeter=clampN(diam/0.04267,12,4000); /* قطر واقعی توپ: ۴۲.۶۷ میلی‌متر */
-    if(mode==='demo')pxPerMeter=1.4; /* مقیاس نمایشی برای صحنه‌ی دمو */
+    pxPerMeter=clampN(diam/0.04267,12,4000);
+    if(mode==='demo')pxPerMeter=1.4;
     ball={x:best.x,y:best.y,d:diam};
     vel={x:0,y:0};lostN=0;trail=[];apexY=best.y;prevGray=gray;
     setPhase('armed');beep(880);
@@ -1129,7 +1179,7 @@ function sampleColor(x,y){
   }catch(e){return[245,245,245];}
 }
 
-/* ---------- فاز ۲: مسلح — مانیتور کلاب + تریگر ضربه ---------- */
+/* ---------- فاز ۲: منتظر ضربه ---------- */
 function armedStep(gray){
   const R=46;
   let moved=0,cnt=0,minx=1e9,maxx=-1,miny=1e9,maxy=-1;
@@ -1143,11 +1193,10 @@ function armedStep(gray){
   }
   const dens=moved/Math.max(1,cnt);
   if(dens>0.015&&!clubSeen){
-    clubSeen=true;beep(660);
-    $('arChipClub').textContent='کلاب: شناسایی ✓';$('arChipClub').className='chip ok';
+    clubSeen=true;beep(660);setChips();
   }
   if(clubSeen&&moved>3)clubBox={x0:minx,y0:miny,x1:maxx,y1:maxy};
-  if(dens>0.045){ /* انفجار حرکت = لحظه‌ی ضربه */
+  if(dens>0.045){
     tImpact=performance.now();
     trail=[{x:ball.x,y:ball.y}];
     apexY=ball.y;distNow=0;lostN=0;vel={x:0,y:0};
@@ -1157,7 +1206,7 @@ function armedStep(gray){
   prevGray=gray;
 }
 
-/* ---------- فاز ۳: ردیابی پرواز + مسافت زنده ---------- */
+/* ---------- فاز ۳: ردیابی پرواز ---------- */
 function trackStep(gray,data,dt){
   const predX=ball.x+vel.x*dt,predY=ball.y+vel.y*dt;
   const R=Math.min(64,Math.max(15,7+Math.hypot(vel.x,vel.y)*dt*2.6));
@@ -1182,7 +1231,7 @@ function trackStep(gray,data,dt){
     lastSpd=Math.hypot(vel.x,vel.y)/pxPerMeter;
   }else{
     lostN++;
-    ball.x=predX;ball.y=predY; /* ادامه با پیش‌بینی */
+    ball.x=predX;ball.y=predY;
   }
   distNow=Math.hypot(ball.x-trail[0].x,(ball.y-trail[0].y)*0.35)/pxPerMeter;
   const el=(performance.now()-tImpact)/1000;
@@ -1192,66 +1241,71 @@ function finishShot(el){
   if(phase!=='track')return;
   setPhase('done');
   stopRec();
-  $('arShutter').classList.add('done');
+  try{setThumb(cv.toDataURL('image/jpeg',0.72));}catch(e){}
   const flight=el||((performance.now()-tImpact)/1000);
   const apexM=Math.max(0,trail[0].y-apexY)/pxPerMeter;
-  let html='<h3>✅ ضربه ثبت شد</h3>'
-    +'<div class="sub2">مسافت تخمینی</div>'
-    +'<div class="big">'+faNum(distNow.toFixed(1))+' متر</div>'
-    +'<div class="sub2">زمان: '+faNum(flight.toFixed(1))+' ثانیه'
-    +(apexM>0.2?' — اوج: '+faNum(apexM.toFixed(1))+' متر':'')
-    +'<br>کالیبراسیون: '+(mode==='demo'?'مقیاس دمو':'قطر توپ (42.7mm)')
-    +(lostN>15?'<br>⚠️ توپ از کادر خارج شد؛ مسافت تا لحظه‌ی خروج':'')
-    +'</div>';
-  if(clipUrl)html+='<a class="act" href="'+clipUrl+'" download="golf-ar-shot.webm">⬇ دانلود ویدیوی ضربه</a>';
+  let html='<div class="big">'+faNum(distNow.toFixed(1))+'<small> م</small></div>';
+  html+='<div class="sub2">⏱ '+faNum(flight.toFixed(1))+' · ↑ '+faNum(apexM.toFixed(1))+' م</div>';
+  if(lostN>15)html+='<div class="sub2">⚠️</div>';
+  if(clipUrl)html+='<a class="ar-icbtn" href="'+clipUrl+'" download="golf-shot.webm">⬇</a>';
   $('arSummary').innerHTML=html;
   $('arSummary').classList.add('show');
 }
 
-/* ---------- ضبط ویدیوی ضربه ---------- */
+/* ---------- ضبط ویدیو ---------- */
 function startRec(){
   clipUrl=null;chunks=[];
   try{
     rec=new MediaRecorder(cv.captureStream(30));
     rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
-    rec.onstop=()=>{if(chunks.length)clipUrl=URL.createObjectURL(new Blob(chunks,{type:'video/webm'}));};
+    rec.onstop=()=>{
+      if(chunks.length){
+        clipUrl=URL.createObjectURL(new Blob(chunks,{type:'video/webm'}));
+        lastMedia={url:clipUrl,name:'golf-shot.webm'};
+      }
+    };
     rec.start();
-    $('arRec').classList.add('show');
+    $('arStRec').classList.add('show');
   }catch(e){rec=null;}
 }
 function stopRec(){
-  $('arRec').classList.remove('show');
+  $('arStRec').classList.remove('show');
   if(rec&&rec.state!=='inactive'){try{rec.stop();}catch(e){}}
   rec=null;
 }
 
-/* ---------- HUD ---------- */
-function rr(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+/* ---------- HUD فقط-آیکون ---------- */
 function drawHud(){
   if(phase==='detect'&&prevCand){
-    const X=prevCand.x*SC,Y=prevCand.y*SC;
-    ctx.strokeStyle='#ffd166';ctx.lineWidth=2;
-    ctx.strokeRect(X-20,Y-20,40,40);
-    ctx.fillStyle='#ffd166';ctx.font='12px Tahoma';
-    ctx.fillText('در حال قفل…',X-24,Y-28);
+    const p=clampN(ballStable/8,0,1);
+    const X=prevCand.x*SC,Y=prevCand.y*SC,s=22,len=5+16*p;
+    ctx.strokeStyle='#ffd166';ctx.lineWidth=2.5;ctx.lineCap='round';
+    [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(c=>{
+      const cx=X+c[0]*s,cy=Y+c[1]*s;
+      ctx.beginPath();
+      ctx.moveTo(cx-c[0]*len,cy);ctx.lineTo(cx,cy);
+      ctx.lineTo(cx,cy-c[1]*len);ctx.stroke();
+    });
+    ctx.fillStyle='#ffd166';
+    ctx.beginPath();ctx.arc(X,Y,2.5+p*2,0,7);ctx.fill();
   }
   if(ball&&phase==='armed'){
-    const X=ball.x*SC,Y=ball.y*SC;
-    ctx.strokeStyle='#39d98a';ctx.lineWidth=2.5;
-    ctx.strokeRect(X-18,Y-18,36,36);
-    ctx.beginPath();
-    ctx.moveTo(X-26,Y);ctx.lineTo(X-18,Y);ctx.moveTo(X+18,Y);ctx.lineTo(X+26,Y);
-    ctx.moveTo(X,Y-26);ctx.lineTo(X,Y-18);ctx.moveTo(X,Y+18);ctx.lineTo(X,Y+26);
-    ctx.stroke();
-    ctx.fillStyle='#39d98a';ctx.font='13px Tahoma';
-    ctx.fillText('توپ ✓',X+24,Y-22);
+    const X=ball.x*SC,Y=ball.y*SC,s=18;
+    ctx.strokeStyle='#34c759';ctx.lineWidth=2.5;ctx.lineCap='round';
+    [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(c=>{
+      const cx=X+c[0]*s,cy=Y+c[1]*s;
+      ctx.beginPath();
+      ctx.moveTo(cx-c[0]*12,cy);ctx.lineTo(cx,cy);
+      ctx.lineTo(cx,cy-c[1]*12);ctx.stroke();
+    });
+    ctx.font='bold 16px Tahoma';ctx.fillText('✓',X+22,Y-20);
   }
   if(clubBox&&phase==='armed'){
     ctx.strokeStyle='#ff9f43';ctx.lineWidth=2;ctx.setLineDash([7,5]);
     ctx.strokeRect(clubBox.x0*SC,clubBox.y0*SC,(clubBox.x1-clubBox.x0)*SC,(clubBox.y1-clubBox.y0)*SC);
     ctx.setLineDash([]);
-    ctx.fillStyle='#ff9f43';ctx.font='12px Tahoma';
-    ctx.fillText('🥍 چوب/ضربه',clubBox.x0*SC,clubBox.y0*SC-6);
+    ctx.font='14px Tahoma';
+    ctx.fillText('🥍',clubBox.x0*SC+2,clubBox.y0*SC-6);
   }
   if((phase==='track'||phase==='done')&&trail.length>1){
     for(let i=1;i<trail.length;i++){
@@ -1267,19 +1321,22 @@ function drawHud(){
     ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(lp.x*SC,lp.y*SC,5,0,7);ctx.fill();
     ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=1.5;
     ctx.beginPath();ctx.arc(lp.x*SC,lp.y*SC,9,0,7);ctx.stroke();
-    /* برچسب مسافت زنده زیر توپ — عدد در حال افزایش */
-    const label='≈ '+faNum(distNow.toFixed(1))+' متر';
-    ctx.font='bold 16px Tahoma';
-    const w=ctx.measureText(label).width+20;
+    /* مسافت زنده‌ی افزایشی زیر توپ */
+    const label='≈ '+faNum(distNow.toFixed(1))+' م';
+    ctx.font='bold 17px Tahoma';
+    const w=ctx.measureText(label).width+22;
     const bx=clampN(lp.x*SC-w/2,6,cv.width-w-6);
-    const by=Math.min(lp.y*SC+16,cv.height-44);
-    ctx.fillStyle='rgba(6,20,14,.82)';rr(bx,by,w,30,9);ctx.fill();
-    ctx.strokeStyle='#39d98a';ctx.lineWidth=1.5;rr(bx,by,w,30,9);ctx.stroke();
-    ctx.fillStyle='#ffd166';ctx.fillText(label,bx+10,by+21);
+    const by=Math.min(lp.y*SC+16,cv.height-46);
+    ctx.fillStyle='rgba(0,0,0,.75)';
+    ctx.beginPath();
+    ctx.moveTo(bx+9,by);ctx.arcTo(bx+w,by,bx+w,by+30,9);ctx.arcTo(bx+w,by+30,bx,by+30,9);
+    ctx.arcTo(bx,by+30,bx,by,9);ctx.arcTo(bx,by,bx+w,by,9);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='#34c759';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle='#ffd166';ctx.fillText(label,bx+11,by+21);
   }
 }
 
-/* ---------- حلقه‌ی اصلی اپ دوربین ---------- */
+/* ---------- حلقه‌ی اصلی ---------- */
 let lastTs=0;
 function loop(ts){
   requestAnimationFrame(loop);
@@ -1288,9 +1345,14 @@ function loop(ts){
   ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
   let ready=false;
   if(mode==='cam'&&vid.readyState>=2){
-    const r=lbox(cv.width,cv.height,vid.videoWidth||1280,vid.videoHeight||720);
-    if(facing==='user'){ctx.save();ctx.translate(cv.width,0);ctx.scale(-1,1);ctx.drawImage(vid,r.dx,r.dy,r.dw,r.dh);ctx.restore();}
-    else ctx.drawImage(vid,r.dx,r.dy,r.dw,r.dh);
+    const vw=vid.videoWidth||1280,vh=vid.videoHeight||720;
+    const r=lbox(cv.width,cv.height,vw,vh);
+    const sw=vw/zoom,sh=vh/zoom,sx=(vw-sw)/2,sy=(vh-sh)/2;
+    if(facing==='user'){
+      ctx.save();ctx.translate(cv.width,0);ctx.scale(-1,1);
+      ctx.drawImage(vid,sx,sy,sw,sh,r.dx,r.dy,r.dw,r.dh);
+      ctx.restore();
+    }else ctx.drawImage(vid,sx,sy,sw,sh,r.dx,r.dy,r.dw,r.dh);
     ready=true;
   }else if(mode==='demo'&&demo){
     demoT+=dt;
@@ -1305,8 +1367,10 @@ function loop(ts){
   }
   if(!ready){
     ctx.fillStyle='#0b1210';ctx.fillRect(0,0,cv.width,cv.height);
-    ctx.fillStyle='#39d98a';ctx.font='17px Tahoma';ctx.textAlign='center';
-    ctx.fillText('دکمه‌ی قرمز را بزن تا دوربین روشن شود ⛳',cv.width/2,cv.height/2);
+    ctx.font='30px Tahoma';ctx.textAlign='center';
+    ctx.fillText('⛳',cv.width/2,cv.height/2-10);
+    ctx.font='34px Tahoma';
+    ctx.fillText('🔴',cv.width/2,cv.height/2+42);
     ctx.textAlign='start';
     return;
   }
