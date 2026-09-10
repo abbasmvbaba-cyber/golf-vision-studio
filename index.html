@@ -1266,11 +1266,15 @@ function stopAll(){
 }
 async function startCam(){
   stopAll();
+  camDenied=false;
   try{
     stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:60}},audio:false});
     vid.srcObject=stream;await vid.play();
     mode='cam';setPhase('detect');
-  }catch(e){toast('دسترسی به دوربین داده نشد');setPhase('off');}
+  }catch(e){
+    camDenied=true;mode='none';
+    toast('دسترسی دوربین داده نشد — از تنظیمات مرورگر مجاز کن و دکمه را دوباره بزن');
+  }
 }
 function startDemo(){
   stopAll();mode='demo';demo=makeARDemo();demoT=0;
@@ -1286,16 +1290,17 @@ function resetShot(){
 function syncZoomBtns(){
   document.querySelectorAll('#arZoom button').forEach(x=>x.classList.toggle('on',parseFloat(x.dataset.z)===zoom));
 }
-let wakeLock=null;
+let wakeLock=null,camDenied=false;
 $('btnAR').onclick=async()=>{
   $('arOverlay').classList.add('on');
   fitCanvas();
   try{if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();}catch(e){}
   try{if(screen.orientation&&screen.orientation.lock)await screen.orientation.lock('portrait');}catch(e){}
   try{wakeLock=await navigator.wakeLock.request('screen');}catch(e){}
+  /* دوربین همین لحظه که اپ باز می‌شود روشن می‌شود — نه با شاتر */
   if(mode==='none'){
-    if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)setPhase('off');
-    else{toast('اینجا دوربین در دسترس نیست — حالت نمایشی اجرا شد');startDemo();}
+    if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)startCam();
+    else startDemo();
   }
 };
 $('arClose').onclick=()=>{$('arOverlay').classList.remove('on');stopAll();phase='off';
@@ -1901,11 +1906,35 @@ function loop(ts){
     ready=true;
   }
   if(!ready){
-    ctx.fillStyle='#0b1210';ctx.fillRect(0,0,cv.width,cv.height);
-    ctx.font='30px Tahoma';ctx.textAlign='center';
-    ctx.fillText('⛳',cv.width/2,cv.height/2-10);
-    ctx.font='34px Tahoma';
-    ctx.fillText('🔴',cv.width/2,cv.height/2+42);
+    /* بوت‌اسکرین: حلقه‌ی اسکن چرخان + وضعیت (بدون ایموجی) */
+    const t=ts/1000;
+    const grd=ctx.createRadialGradient(cv.width/2,cv.height*0.42,10,cv.width/2,cv.height*0.42,Math.max(cv.width,cv.height)*0.6);
+    grd.addColorStop(0,'#0c1411');grd.addColorStop(1,'#05080a');
+    ctx.fillStyle=grd;ctx.fillRect(0,0,cv.width,cv.height);
+    const cx=cv.width/2,cy=cv.height*0.42,R=Math.min(cv.width,cv.height)*0.085;
+    ctx.save();ctx.translate(cx,cy);ctx.rotate(t*0.9);
+    ctx.strokeStyle='rgba(127,224,176,.95)';ctx.lineWidth=2.5;ctx.lineCap='round';
+    ctx.setLineDash([R*0.4,R*0.55]);
+    ctx.beginPath();ctx.arc(0,0,R,0,7);ctx.stroke();
+    ctx.restore();
+    ctx.strokeStyle='rgba(127,224,176,.3)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(cx,cy,R*0.58,0,7);ctx.stroke();
+    [[0,-1],[0,1],[-1,0],[1,0]].forEach(v=>{
+      ctx.beginPath();
+      ctx.moveTo(cx+v[0]*R*1.28,cy+v[1]*R*1.28);
+      ctx.lineTo(cx+v[0]*R*1.12,cy+v[1]*R*1.12);
+      ctx.stroke();
+    });
+    ctx.fillStyle='#eef7fa';ctx.beginPath();ctx.arc(cx,cy,R*0.17,0,7);ctx.fill();
+    ctx.textAlign='center';
+    ctx.fillStyle='rgba(207,228,236,.9)';
+    ctx.font='600 '+Math.max(11,cv.width*0.021)+'px Menlo,monospace';
+    ctx.fillText(camDenied?'CAMERA ACCESS REQUIRED':'INITIALIZING CAMERA',cx,cy+R*2.0);
+    ctx.fillStyle='rgba(143,181,194,.65)';
+    ctx.font=Math.max(9,cv.width*0.016)+'px Menlo,monospace';
+    ctx.fillText(camDenied?'ALLOW IN BROWSER SETTINGS · TAP ● TO RETRY':'REQUESTING PERMISSION…',cx,cy+R*2.0+Math.max(16,cv.width*0.032));
+    ctx.fillStyle='rgba(127,224,176,'+(0.45+0.4*Math.sin(t*3))+')';
+    ctx.beginPath();ctx.arc(cx,cy+R*2.0+Math.max(34,cv.width*0.066),3,0,7);ctx.fill();
     ctx.textAlign='start';
     return;
   }
