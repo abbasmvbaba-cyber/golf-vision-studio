@@ -44,6 +44,15 @@ index.html   ← کل اپ (HTML + CSS + JS در یک فایل)
 .nojekyll    ← سرو شدن مستقیم فایل‌ها در GitHub Pages
 ```
 
+## 📱 نصب به‌صورت اپ (تمام‌صفحه، بدون UI مرورگر)
+
+سایت یک PWA است. برای تجربه‌ی تمام‌صفحه‌ی واقعی (بدون نوار آدرس و دکمه‌های سافاری):
+
+- **iPhone:** در سافاری دکمه‌ی Share ← «Add to Home Screen» ← از هوم اسکرین باز کن
+- **Android:** منوی کروم ← «Add to Home screen» / «Install app»
+
+`manifest.json` با حالت `display: fullscreen` + service worker (network-first، همیشه نسخه‌ی تازه) + آیکون‌ها آماده است.
+
 ## 📄 مجوز
 
 MIT — آزاد برای استفاده، تغییر و انتشار.
