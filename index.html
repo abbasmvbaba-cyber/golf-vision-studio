@@ -84,6 +84,11 @@ input[type=file]{display:none}
 .ar-dot.show{display:block}
 @keyframes arblink{50%{opacity:.15}}
 #arFlash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .35s;z-index:4}
+#statsModal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:600;display:none;overflow:auto}
+#statsModal.on{display:block}
+.statcard{background:#0f1a15;border:1px solid #1f2e27;border-radius:12px;padding:10px 12px;text-align:center}
+.statcard b{display:block;font-size:20px;color:#ffd166}
+.statcard span{font-size:11px;color:#9db8aa}
 .ar-colors{position:absolute;top:calc(60px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));display:none;flex-direction:column;gap:10px;background:rgba(18,18,20,.82);padding:12px 9px;border-radius:99px;z-index:5}
 .ar-colors.show{display:flex}
 .ar-cdot{width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.3);cursor:pointer;padding:0;transition:transform .15s}
@@ -122,6 +127,8 @@ input[type=file]{display:none}
   </div>
   <div class="row" style="margin-top:12px">
     <button id="btnAR" class="act primary ar-open-btn">🎥 حالت اپ دوربین — شناسایی توپ و کلاب + ردیابی زنده‌ی مسافت</button>
+    <button id="btnStats" class="act ar-open-btn">📊 آمار نشست</button>
+<div id="statsModal"><div class="panel" style="max-width:640px;margin:40px auto"><div class="row" style="justify-content:space-between"><h2 style="margin:0">📊 آمار نشست — Player Intelligence</h2><button id="statsClose" class="act">✕</button></div><div id="statsSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:12px 0"></div><div id="statsTable" style="max-height:300px;overflow:auto"></div><div class="row" style="margin-top:10px"><button id="statsExport" class="act">⬇ خروجی JSON (برای Supabase)</button><button id="statsClear" class="act">🗑 پاک کردن</button></div><div class="note">Safe Distance = صدک ۲۰ می‌بارِ معتبر (قابل اتکا، نه بهترین ضربه) — طبق اصل «Reliable Playing Distance».</div></div></div>
   </div>
 </header>
 
@@ -1029,8 +1036,97 @@ let ball=null,ballStable=0,prevCand=null,pxPerMeter=80;
 let prevGray=null,clubSeen=false,clubBox=null;
 let vel={x:0,y:0},lostN=0,tImpact=0,trail=[],seedCol=[245,245,245];
 let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=false,lastGray=null;
+let kf=null,trackMatched=0,trackTotal=0,predPts=null;
 let tracerCol=(function(){try{return localStorage.getItem('golftar_c')||'#ff4d00';}catch(e){return '#ff4d00';}})(),impactCnt=0;
 let rec=null,chunks=[],clipUrl=null,lastMedia=null,beepCtx=null;
+
+/* ================= ماژول فیزیک (GolfPhysicsEngine) — سند §14-25 ================= */
+const PHYS={g:9.80665,rho:1.225,m:0.04593,r:0.02135,Cd:0.24,Cl:0.21};
+PHYS.A=Math.PI*PHYS.r*PHYS.r;
+PHYS.k=PHYS.Cd*PHYS.rho*PHYS.A/(2*PHYS.m);   /* درگ ≈0.0046 1/m — §16 */
+PHYS.kl=PHYS.Cl*PHYS.rho*PHYS.A/(2*PHYS.m);  /* لیفت مگنوس، Cl فرضی → Estimated — §17 */
+const YD=1/0.9144,MPH=2.23694;
+/* شبیه‌سازی صفحه‌ای با درگ؛ y-up؛ تا فرود روی زمین */
+function simCarry(vx,vyUp){
+  let x=0,y=0,dt=0.008,t=0;const pts=[[0,0]];
+  for(let i=0;i<4000;i++){
+    const v=Math.hypot(vx,vyUp);
+    /* درگ خلاف سرعت + لیفت عمود بر سرعت (بک‌اسپین) — §16-17 */
+    const drag=PHYS.k*v,lift=PHYS.kl*v;
+    vx+=(-drag*vx-lift*vyUp)*dt;vyUp+=(-PHYS.g-drag*vyUp+lift*vx)*dt;
+    x+=vx*dt;y+=vyUp*dt;t+=dt;pts.push([x,y]);
+    if(y<0&&t>0.15)return{carry:Math.abs(x),t,pts};
+  }
+  return{carry:Math.abs(x),t,pts};
+}
+/* برازش درجه۲ روی y(t) — برای خودکالیبراسیون با گرانش (سند §34) */
+function det3(m){return m[0]*m[4]*m[8]+m[1]*m[5]*m[6]+m[2]*m[3]*m[7]-m[2]*m[4]*m[6]-m[1]*m[3]*m[8]-m[0]*m[5]*m[7];}
+function quadFit(ts,ys){
+  const n=ts.length;if(n<5)return null;
+  const S=[0,0,0,0,0,0,0,0,0],B=[0,0,0];
+  for(let i=0;i<n;i++){
+    const t=ts[i],p=[1,t,t*t];
+    for(let j=0;j<3;j++){B[j]+=p[j]*ys[i];for(let k=0;k<3;k++)S[j*3+k]+=p[j]*p[k];}
+  }
+  const d=det3(S);if(!isFinite(d)||Math.abs(d)<1e-12)return null;
+  /* کرامر: مجهول‌ها [c,b,a] — y = a·t² + b·t + c */
+  const Mc=[B[0],S[1],S[2],B[1],S[4],S[5],B[2],S[7],S[8]];
+  const Mb=[S[0],B[0],S[2],S[3],B[1],S[5],S[6],B[2],S[8]];
+  const Ma=[S[0],S[1],B[0],S[3],S[4],B[1],S[6],S[7],B[2]];
+  const c=det3(Mc)/d,b=det3(Mb)/d,a=det3(Ma)/d;
+  if(!isFinite(a)||!isFinite(b))return null;
+  return{a,b,c};
+}
+/* ================= فیلتر کالمن (KalmanTracker) — سند §8-9 ================= */
+/* State: [x,y,vx,vy,ax,ay] — Constant Acceleration */
+function makeKF(x,y,dt){
+  return{
+    s:new Float64Array([x,y,0,0,0,0]),
+    P:new Float64Array([50,0,0,0,0,0, 0,50,0,0,0,0, 0,0,900,0,0,0, 0,0,0,900,0,0, 0,0,0,0,2500,0, 0,0,0,0,0,2500]),
+    inited:false
+  };
+}
+function kfPredict(kf,dt){
+  const s=kf.s;
+  s[0]+=s[2]*dt+0.5*s[4]*dt*dt; s[1]+=s[3]*dt+0.5*s[5]*dt*dt;
+  s[2]+=s[4]*dt; s[3]+=s[5]*dt;
+  const P=kf.P,F=[1,0,dt,0,0.5*dt*dt,0, 0,1,0,dt,0,0.5*dt*dt, 0,0,1,0,dt,0, 0,0,0,1,0,dt, 0,0,0,0,1,0, 0,0,0,0,0,1];
+  const NP=new Float64Array(36);
+  for(let i=0;i<6;i++)for(let j=0;j<6;j++){
+    let v=0;for(let k=0;k<6;k++)v+=F[i*6+k]*P[k*6+j];
+    NP[i*6+j]=v;
+  }
+  for(let i=0;i<6;i++)for(let j=0;j<6;j++){
+    let v=0;for(let k=0;k<6;k++)v+=NP[i*6+k]*F[j*6+k];
+    P[i*6+j]=v;
+  }
+  P[0]+=2.5;P[7]+=2.5;P[14]+=180;P[21]+=180;P[28]+=500;P[35]+=500;
+}
+function kfUpdate(kf,zx,zy,r2){
+  const s=kf.s,P=kf.P;
+  const S00=P[0]+r2,S01=P[1],S10=P[6],S11=P[7]+r2;
+  const det=S00*S11-S01*S10;if(!isFinite(det)||Math.abs(det)<1e-12)return;
+  const K00=(P[0]*S11-P[1]*S10)/det,K01=(P[0]*S01-P[1]*S00)/det*-1;
+  const K10=(P[6]*S11-P[7]*S10)/det,K11=(P[6]*S01-P[7]*S00)/det*-1;
+  const K20=(P[12]*S11-P[13]*S10)/det,K21=(P[12]*S01-P[13]*S00)/det*-1;
+  const K30=(P[18]*S11-P[19]*S10)/det,K31=(P[18]*S01-P[19]*S00)/det*-1;
+  const K40=(P[24]*S11-P[25]*S10)/det,K41=(P[24]*S01-P[25]*S00)/det*-1;
+  const K50=(P[30]*S11-P[31]*S10)/det,K51=(P[30]*S01-P[31]*S00)/det*-1;
+  const ix=zx-s[0],iy=zy-s[1];
+  s[0]+=K00*ix+K01*iy;s[1]+=K10*ix+K11*iy;s[2]+=K20*ix+K21*iy;
+  s[3]+=K30*ix+K31*iy;s[4]+=K40*ix+K41*iy;s[5]+=K50*ix+K51*iy;
+  /* P' = (I-KH)P — فرمول دقیق */
+  const K=[[K00,K01],[K10,K11],[K20,K21],[K30,K31],[K40,K41],[K50,K51]];
+  const P0=Float64Array.from(P);
+  for(let i=0;i<6;i++)for(let j=0;j<6;j++){
+    P[i*6+j]=P0[i*6+j]-K[i][0]*P0[0*6+j]-K[i][1]*P0[1*6+j];
+  }
+}
+/* ================= تحلیل و ذخیره (Analytics/Storage) — سند §26-33,45 ================= */
+function loadShots(){try{return JSON.parse(localStorage.getItem('golftar_shots')||'[]');}catch(e){return[];}}
+function saveShot(s){const a=loadShots();a.push(s);while(a.length>400)a.shift();try{localStorage.setItem('golftar_shots',JSON.stringify(a));}catch(e){}}
+function median(a){if(!a.length)return 0;const b=a.slice().sort((x,y)=>x-y);const m=b.length>>1;return b.length%2?b[m]:(b[m-1]+b[m])/2;}
+function percentile(a,p){if(!a.length)return 0;const b=a.slice().sort((x,y)=>x-y);return b[Math.min(b.length-1,Math.floor(p*b.length))];}
 
 function beep(f){
   try{
@@ -1221,6 +1317,7 @@ function detectStep(gray){
     ball={x:best.x,y:best.y,d:diam,r:best.r};
     seedCol=sampleColor(best.x,best.y);
     vel={x:0,y:0};lostN=0;outN=0;lowRun=0;
+    kf=makeKF(best.x,best.y,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;
     trail=[{x:best.x,y:best.y}];apexY=best.y;prevGray=gray;
     armGrace=performance.now()+450;
     setPhase('armed');beep(880);
@@ -1243,7 +1340,7 @@ function manualLock(cxp,cyp){
   pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
   ball={x:bx,y:by,d:r*2,r:r};
   seedCol=sampleColor(bx,by);
-  vel={x:0,y:0};lostN=0;outN=0;lowRun=0;trail=[{x:bx,y:by}];apexY=by;
+  vel={x:0,y:0};lostN=0;outN=0;lowRun=0;kf=makeKF(bx,by,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;trail=[{x:bx,y:by}];apexY=by;
   prevGray=lastGray;armGrace=performance.now()+450;
   setPhase('armed');beep(880);
 }
@@ -1295,9 +1392,11 @@ function armedStep(gray,data,dt){
   if(impactCnt>=2){
     tImpact=performance.now();
     trail=[{x:ball.x,y:ball.y}];
+    kf=makeKF(ball.x,ball.y,dt);trackMatched=0;trackTotal=0;obs=[];predPts=null;
     if(found){
-      vel.x=(bx-ball.x)/Math.max(dt,0.001);vel.y=(by-ball.y)/Math.max(dt,0.001);
+      kf.s[2]=(bx-ball.x)/Math.max(dt,0.001);kf.s[3]=(by-ball.y)/Math.max(dt,0.001);
       ball.x=bx;ball.y=by;
+      obs.push({t:0,x:bx,y:by});
     }else vel={x:0,y:0};
     apexY=ball.y;distNow=0;lostN=0;outN=0;lowRun=0;lastSpd=0;
     startRec();setPhase('track');beep(1250);
@@ -1307,61 +1406,118 @@ function armedStep(gray,data,dt){
   prevGray=gray;
 }
 
-/* ---------- فاز ۳: ردیابی پرواز — نرم، بدون زیگزاگ، بدون قطع زودهنگام ---------- */
+/* ---------- فاز ۳: ردیابی پرواز — فیلتر کالمن + تحلیل علمی ضربه ---------- */
+let obs=[]; /* نمونه‌های (t,x,y) برای برازش */
 function trackStep(gray,data,dt){
-  const spd=Math.hypot(vel.x,vel.y);
-  const R=clampN(ball.r*2.6+spd*dt*2.2,ball.r*1.7,70);
+  kfPredict(kf,dt);
+  const px=kf.s[0],py=kf.s[1];
+  const spd=Math.hypot(kf.s[2],kf.s[3]);
+  const R=clampN((ball.r||6)*2.6+spd*dt*2.2,(ball.r||6)*1.7,70);
   const seedL=(seedCol[0]*0.4+seedCol[1]*0.45+seedCol[2]*0.15)/255;
   const th=clampN(seedL*0.70,0.45,0.85);
   let best=-1e9,bx=-1,by=-1;
-  const x0=Math.max(1,Math.floor(ball.x-R)),x1=Math.min(AW-2,Math.ceil(ball.x+R));
-  const y0=Math.max(1,Math.floor(ball.y-R)),y1=Math.min(AH-2,Math.ceil(ball.y+R));
+  const x0=Math.max(1,Math.floor(px-R)),x1=Math.min(AW-2,Math.ceil(px+R));
+  const y0=Math.max(1,Math.floor(py-R)),y1=Math.min(AH-2,Math.ceil(py+R));
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
     const l=gray[y*AW+x];if(l<th)continue;
     const j=(y*AW+x)*4;
     const cs=1-(Math.abs(data[j]-seedCol[0])+Math.abs(data[j+1]-seedCol[1])+Math.abs(data[j+2]-seedCol[2]))/765;
-    const dd=Math.hypot(x-ball.x,y-ball.y);
+    const dd=Math.hypot(x-px,y-py);
     const s=l*100+cs*40-dd*1.6;
     if(s>best){best=s;bx=x;by=y;}
   }
   let matched=false;
-  if(bx>=0){
-    const dxn=bx-ball.x,dyn=by-ball.y;
-    const vn=Math.hypot(vel.x,vel.y);
-    const dot=(dxn*vel.x+dyn*vel.y)/((Math.hypot(dxn,dyn)*vn)||1);
-    if(Math.hypot(dxn,dyn)>R*0.8&&vn>2&&dot<-0.5){
-      lostN++;ball.x+=vel.x*dt;ball.y+=vel.y*dt; /* پرش خلاف جهت پرواز = نویز */
-    }else if(Math.hypot(dxn,dyn)<Math.max(1,ball.r*0.22)){
-      matched=true;lostN=0;outN=0;lowRun=0; /* زیرپیکسل — همان جا */
-    }else{
-      const iv=dxn/Math.max(dt,0.001),jv=dyn/Math.max(dt,0.001);
-      vel.x=vel.x*0.70+iv*0.30;vel.y=vel.y*0.70+jv*0.30; /* نرم‌سازی سرعت */
-      ball.x=bx;ball.y=by;matched=true;lostN=0;outN=0;lowRun=0;
-      const lp=trail[trail.length-1];
-      if(Math.hypot(bx-lp.x,by-lp.y)>Math.max(0.8,ball.r*0.12)){
-        trail.push({x:bx,y:by});
-        if(trail.length>1200)trail.shift();
-      }
-      if(by<apexY)apexY=by;
-      lastSpd=Math.hypot(vel.x,vel.y)/pxPerMeter;
+  if(bx>=0&&Math.hypot(bx-px,by-py)<R*1.05){
+    kfUpdate(kf,bx,by,Math.max(4,(ball.r||6)*(ball.r||6)));
+    matched=true;lostN=0;outN=0;lowRun=0;
+    const nx=kf.s[0],ny=kf.s[1];
+    const lp=trail[trail.length-1];
+    if(Math.hypot(nx-lp.x,ny-lp.y)>Math.max(0.8,(ball.r||6)*0.12)){
+      trail.push({x:nx,y:ny});
+      if(trail.length>1200)trail.shift();
+      obs.push({t:(performance.now()-tImpact)/1000,x:nx,y:ny});
     }
+    if(ny<apexY)apexY=ny;
+    lastSpd=Math.hypot(kf.s[2],kf.s[3])/pxPerMeter;
   }else{
     lostN++;
-    ball.x+=vel.x*dt;ball.y+=vel.y*dt;
-    if(ball.x<-8||ball.x>AW+8||ball.y<-8||ball.y>AH+8)outN++;
+    if(px<-8||px>AW+8||py<-8||py>AH+8)outN++;
     if(lastSpd<0.09)lowRun+=dt;else lowRun=0;
   }
-  distNow=Math.hypot(ball.x-trail[0].x,(ball.y-trail[0].y)*0.35)/pxPerMeter;
+  trackMatched+=matched?1:0;
+  trackTotal++;
+  distNow=Math.hypot(kf.s[0]-trail[0].x,(kf.s[1]-trail[0].y)*0.35)/pxPerMeter;
   const el=(performance.now()-tImpact)/1000;
   if(outN>50){finishShot(el,'out');return;}
   if(lostN>90){finishShot(el,'lost');return;}
   if(el>2.5&&lowRun>1.3){finishShot(el,'stop');return;}
   if(el>18)finishShot(el,'time');
 }
+/* ---------- تحلیل ضربه: سرعت، زاویه، کری، شکل، اطمینان — سند §11-33 ---------- */
+function analyzeShot(reason){
+  const res={ballSpeedMps:null,launchDeg:null,carryM:null,carryPred:false,shape:'—',conf:0,predPts:null,calib:'diam'};
+  if(obs.length<6)return res;
+  const t0=obs[0].t;
+  const early=obs.filter(o=>o.t-t0<0.55);
+  if(early.length>=6){
+    const fit=quadFit(early.map(o=>o.t-t0),early.map(o=>o.y));
+    if(fit&&fit.a>0.75){
+      const gpx=fit.a*2; /* شتاب عمودی تصویر (px/s²) — سند §34 */
+      const scaleG=gpx/PHYS.g; /* ½·(g·scale)·t² = y ⇒ scale = 2a/g (m/px) */
+      if(!(scaleG>2&&scaleG<20000))return res; /* کالیبراسیون غیرمنطقی */
+      void gpx;
+      const scaleD=pxPerMeter;
+      /* دو کالیبراسیون نزدیک باشند → اعتماد بالا */
+      if(isFinite(scaleG)&&scaleG>0.05&&scaleG<6000){
+        res.calib=(Math.abs(scaleG-scaleD)/Math.max(scaleG,scaleD)<0.45)?'both':'grav';
+        pxPerMeter=reason==='lost'?scaleD:(scaleG*0.6+scaleD*0.4);
+      }
+      const ts=early.map(o=>o.t-t0),xs=early.map(o=>o.x);
+      /* Least Squares خطی برای vx */
+      let st=0,sx=0,stt=0,stx=0,n=ts.length;
+      for(let i=0;i<n;i++){st+=ts[i];sx+=xs[i];stt+=ts[i]*ts[i];stx+=ts[i]*xs[i];}
+      const dnm=n*stt-st*st;
+      if(Math.abs(dnm)>1e-9){
+        const vxPx=(n*stx-st*sx)/dnm;
+        const vyUpPx=-fit.b; /* y تصویر رو به پایین */
+        const v0Px=Math.hypot(vxPx,vyUpPx);
+        res.ballSpeedMps=v0Px/pxPerMeter;
+        res.launchDeg=Math.atan2(vyUpPx,Math.abs(vxPx))*180/Math.PI;
+        /* کری با مدل درگ */
+        const sim=simCarry(vxPx/pxPerMeter,vyUpPx/pxPerMeter);
+        res.carryM=sim.carry;res.carryPred=true;
+        /* مسیر پیش‌بینی برای خط‌چین (بازگشت به پیکسل) */
+        res.predPts=sim.pts.filter((p,i)=>i%6===0).slice(0,60).map(p=>({
+          x:obs[0].x+p[0]*pxPerMeter,
+          y:obs[0].y-p[1]*pxPerMeter
+        }));
+        /* شکل ضربه از انحراف جانبی مشاهده‌شده (سند §26-27) */
+        const last=obs[obs.length-1];
+        const span=last.t-obs[0].t;
+        if(span>0.3){
+          let maxDev=0,devSign=0;
+          for(const o of obs){
+            const linX=obs[0].x+(last.x-obs[0].x)*((o.t-obs[0].t)/span);
+            const d=o.x-linX;
+            if(Math.abs(d)>Math.abs(maxDev)){maxDev=d;devSign=Math.sign(d);}
+          }
+          const rPx=ball.r||6;
+          const latM=maxDev/pxPerMeter,latPct=res.carryM?Math.abs(latM)/res.carryM*100:0;
+          if(Math.abs(maxDev)<rPx*1.6)res.shape='STR';
+          else if(latPct>9)res.shape=devSign>0?'SLICE→':'←HOOK';
+          else if(latPct>3.5)res.shape=devSign>0?'FADE→':'←DRAW';
+          else res.shape=devSign>0?'PUSH→':'←PULL';
+        }
+        /* بونوس فیزیک: شتاب برازش‌شده منطقی */
+        res.conf=1;
+      }
+    }
+  }
+  return res;
+}
 function finishShot(el,reason){
   if(phase!=='track')return;
-  /* تریگر کاذب: توپ تقریباً حرکت نکرده → بی‌صدا به انتظار برگرد */
-  if(reason==='stop'&&distNow*pxPerMeter<Math.max(3,ball.r*1.3)){
+  if(reason==='stop'&&distNow*pxPerMeter<Math.max(3,(ball.r||6)*1.3)){
     stopRec();
     trail=[{x:ball.x,y:ball.y}];
     tImpact=performance.now();lowRun=0;lostN=0;outN=0;impactCnt=0;
@@ -1373,9 +1529,30 @@ function finishShot(el,reason){
   try{setThumb(cv.toDataURL('image/jpeg',0.72));}catch(e){}
   const flight=el||((performance.now()-tImpact)/1000);
   const apexM=Math.max(0,trail[0].y-apexY)/pxPerMeter;
-  const why=reason==='out'?'↔️':(reason==='stop'?'🛑':(reason==='lost'?'❓':'⏱'));
-  let html='<div class="big">'+faNum(distNow.toFixed(1))+'<small> م</small></div>';
-  html+='<div class="sub2">⏱ '+faNum(flight.toFixed(1))+' · ↑ '+faNum(apexM.toFixed(1))+' م · '+why+'</div>';
+  const A=analyzeShot(reason);
+  const trackRatio=trackTotal?trackMatched/trackTotal:0;
+  /* نمره اطمینان — سند §33 */
+  const cDet=clampN(prevCand?1:0.4,0,1),cTrack=clampN(trackRatio*1.2,0,1),
+        cCal=A.calib==='both'?0.9:(A.calib==='grav'?0.7:0.5),
+        cPhys=A.conf;
+  const conf=Math.round(100*cDet*cTrack*cCal*Math.max(cPhys,reason==='stop'?0.6:0.3));
+  /* ذخیره — سند §36 */
+  if(A.carryM){
+    saveShot({t:Date.now(),club:'—',ballSpeedMps:A.ballSpeedMps,launchDeg:A.launchDeg,
+      carryM:A.carryM,apexM:apexM,flight:flight,shape:A.shape,conf:conf,dist:distNow});
+  }
+  predPts=A.predPts||null;
+  const est=A.carryPred?'≈':'';
+  const carryYd=A.carryM?A.carryM*YD:null;
+  const bs=A.ballSpeedMps?A.ballSpeedMps*MPH:null;
+  let html='<div class="big">'+est+faNum(distNow.toFixed(1))+'<small> م</small></div>';
+  if(carryYd)html+='<div class="sub2" style="color:#ffd166">📏 کری تخمینی: '+faNum(carryYd.toFixed(0))+' yd</div>';
+  let l2='';
+  if(bs)l2+='⚡ '+faNum(bs.toFixed(0))+' mph';
+  if(A.launchDeg!==null)l2+=(l2?' · ':'')+'📐 '+faNum(A.launchDeg.toFixed(0))+'°';
+  if(l2)html+='<div class="sub2">'+l2+'</div>';
+  html+='<div class="sub2">↑ '+faNum(apexM.toFixed(1))+' م · ⏱ '+faNum(flight.toFixed(1))+' s · '+A.shape+' · ✔️'+faNum(conf)+'%</div>';
+  if(reason==='lost')html+='<div class="sub2">❓</div>';
   if(clipUrl)html+='<a class="ar-icbtn" href="'+clipUrl+'" download="golf-shot.webm">⬇</a>';
   $('arSummary').innerHTML=html;
   $('arSummary').classList.add('show');
@@ -1496,6 +1673,17 @@ function drawHud(){
     ctx.font='14px Tahoma';
     ctx.fillText('🥍',clubBox.x0*SCX+2,clubBox.y0*SCY-6);
   }
+  if(phase==='done'&&predPts&&predPts.length>1){
+    const T=trail[trail.length-1];
+    let i0=0,bd=1e9;
+    predPts.forEach((p,i)=>{const d=Math.hypot(p.x-T.x,p.y-T.y);if(d<bd){bd=d;i0=i;}});
+    ctx.setLineDash([10,8]);
+    ctx.strokeStyle=hexA(tracerCol,0.55);ctx.lineWidth=clampN((ball?ball.r:8)*SCX*0.4,3,9);
+    ctx.lineCap='round';ctx.beginPath();
+    ctx.moveTo(T.x*SCX,T.y*SCY);
+    for(let i=i0+1;i<predPts.length;i++)ctx.lineTo(predPts[i].x*SCX,predPts[i].y*SCY);
+    ctx.stroke();ctx.setLineDash([]);
+  }
   if((phase==='track'||phase==='done')&&trail.length>1){
     drawTracer(trail);
     const lp=trail[trail.length-1];
@@ -1569,7 +1757,49 @@ function loop(ts){
   drawHud();
 }
 requestAnimationFrame(loop);
+
+/* ================= UI آمار نشست (Player Intelligence) ================= */
+function fmt(n,d){return faNum(Number(n).toFixed(d===undefined?0:d));}
+function renderStats(){
+  const A=loadShots().filter(s=>s.carryM);
+  const sum=$('statsSummary'),tb=$('statsTable');
+  if(!A.length){sum.innerHTML='<div class="small">هنوز ضربه‌ای ثبت نشده — از حالت دوربین چند ضربه بزن ⛳</div>';tb.innerHTML='';return;}
+  const car=A.map(s=>s.carryM);
+  const med=median(car),best=Math.max(...car),safe=percentile(car,0.2);
+  const mu=car.reduce((a,b)=>a+b,0)/car.length;
+  const sd=Math.sqrt(car.reduce((a,b)=>a+(b-mu)*(b-mu),0)/car.length);
+  const cons=Math.max(0,Math.round(100*(1-Math.min(1,sd/Math.max(med,0.01)))));
+  const right=A.filter(s=>(s.shape||'').includes('→')).length,left=A.filter(s=>(s.shape||'').includes('←')).length;
+  const cards=[
+    ['count',A.length+' ⛳','تعداد ضربه'],
+    ['median',fmt(med*YD)+' yd','میانه کری'],
+    ['safe',fmt(safe*YD)+' yd','Safe Distance (P20)'],
+    ['best',fmt(best*YD)+' yd','بهترین کری'],
+    ['cons',cons+'%','Consistency'],
+    ['miss','R '+Math.round(right*100/A.length)+'% / L '+Math.round(left*100/A.length)+'%','الگوی خطا']
+  ];
+  sum.innerHTML=cards.map(c=>'<div class="statcard"><b id="sc_'+c[0]+'">'+c[1]+'</b><span>'+c[2]+'</span></div>').join('');
+  const rows=A.slice(-14).reverse().map(s=>{
+    const d=new Date(s.t);
+    const hh=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    return '<tr><td>'+hh+'</td><td><b>'+fmt(s.carryM*YD)+'</b> yd</td><td>'+fmt(s.carryM,1)+' م</td>'
+      +'<td>'+(s.ballSpeedMps?fmt(s.ballSpeedMps*MPH)+' mph':'—')+'</td>'
+      +'<td>'+(s.launchDeg!==null&&s.launchDeg!==undefined?fmt(s.launchDeg)+'°':'—')+'</td>'
+      +'<td>'+(s.shape||'—')+'</td><td>✔️'+fmt(s.conf||0)+'%</td></tr>';
+  }).join('');
+  tb.innerHTML='<table><tr><th>ساعت</th><th>کری</th><th>متر</th><th>Ball Speed</th><th>Launch</th><th>Shape</th><th>Conf</th></tr>'+rows+'</table>';
+}
+$('btnStats').onclick=()=>{renderStats();$('statsModal').classList.add('on');};
+$('statsClose').onclick=()=>$('statsModal').classList.remove('on');
+$('statsModal').addEventListener('click',e=>{if(e.target===$('statsModal'))$('statsModal').classList.remove('on');});
+$('statsClear').onclick=()=>{if(confirm('همه‌ی ضربه‌های ذخیره‌شده پاک شود؟')){try{localStorage.removeItem('golftar_shots');}catch(e){}renderStats();}};
+$('statsExport').onclick=()=>{
+  const b=new Blob([JSON.stringify(loadShots(),null,1)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='golf-shots.json';
+  document.body.appendChild(a);a.click();a.remove();
+};
 })();
+
 </script>
 <script>if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{});});}</script>
 </body>

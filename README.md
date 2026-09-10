@@ -62,6 +62,29 @@ index.html   ← کل اپ (HTML + CSS + JS در یک فایل)
 - شناسایی توپ: بلاب روشنِ گردِ همبند + تست حلقه‌ی تیره‌تر در مقیاس خود توپ + فیلتر نسبت ابعاد و پرشدگی — لباس، دست و برق پوست رد می‌شوند
 - پایان ضربه فقط وقتی: توپ از کادر خارج شود (~۱ ثانیه)، ۱.۵ ثانیه کامل گم شود، یا ۱.۳ ثانیه بی‌حرکت بماند
 
+## 🏗 معماری علمی (بر اساس سند iOS Professional Tracking)
+
+ماژول‌های سند در اپ وب پیاده شده‌اند (همان مرزهای ماژولی، داخل یک فایل برای پیش‌نمایش آفلاین):
+
+| ماژول سند | در وب | وضعیت |
+|---|---|---|
+| BallDetector (§7) | بلاب همبند + حلقه مقیاس‌پذیر + فیلتر شکل | Measured |
+| KalmanTracker (§8-9) | کالمن CA شش‌حالته [x,y,vx,vy,ax,ay] | Measured |
+| ImpactDetector (§10) | جابه‌جایی خود توپ ×۲ فریم + پنجره زمانی | Measured |
+| MultiFrameTracker (§11) | Least Squares چندفریمی برای v0 | Estimated |
+| Launch Angle/Direction (§12-13) | atan2 از بردار v0 تصویری | Estimated |
+| BallFlightModel (§14-17) | درگ Cd=0.24 + لیفت مگنوس Cl=0.21 | Estimated |
+| Camera Calibration (§34) | خودکالیبراسیون با گرانش (scale=2a/g) + قطر توپ 42.67mm | Estimated |
+| Carry (§20) | شبیه‌سازی تا فرود روی Ground Plane + خط‌چین پیش‌بینی (§44) | Estimated |
+| Shot Classifier (§26-27) | STR / PUSH / PULL / FADE / DRAW / SLICE / HOOK | Estimated |
+| Confidence (§33) | تشخیص × ردیابی × کالیبراسیون × فیزیک | Measured |
+| Player Intelligence (§28-32,45) | میانه/بهترین/Safe(P20)/Consistency/الگوی خطا + خروجی JSON | Measured |
+| Offline Storage + Sync (§36-38) | localStorage + Export JSON (آماده Supabase) | Measured |
+
+اصل §46: هدف «Reliable Playing Distance» است نه Maximum — Safe Distance = صدک ۲۰.
+
+**نیاز به iOS بومی (Phase بعدی):** 240fps با AVFoundation، YOLO CoreML، ARKit/LiDAR، و تست‌های XCTest فیزیک.
+
 ## 📄 مجوز
 
 MIT — آزاد برای استفاده، تغییر و انتشار.
