@@ -128,6 +128,20 @@ input[type=file]{display:none}
 .statcard{background:#0f1a15;border:1px solid #1f2e27;border-radius:12px;padding:10px 12px;text-align:center}
 .statcard b{display:block;font-size:20px;color:#ffd166}
 .statcard span{font-size:11px;color:#9db8aa}
+.ar-gear{position:absolute;top:calc(60px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));width:40px;height:40px;border-radius:50%;border:none;background:rgba(25,25,25,.55);display:none;align-items:center;justify-content:center;color:#cfe4ec;cursor:pointer;z-index:5}
+.ar-gear.show{display:flex}
+.ar-gear .icn{width:19px;height:19px}
+#arSettings{position:absolute;top:calc(108px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));width:min(300px,86vw);padding:14px 16px;display:none;z-index:6;max-height:calc(100dvh - 260px);overflow:auto}
+#arSettings.show{display:block}
+#arSettings .t{font-size:9px;letter-spacing:2.5px;color:#8fd8e8;margin-bottom:9px;font-family:Menlo,monospace}
+#arSettings .sec{margin-bottom:12px}
+#arSettings .sl{font-size:10px;letter-spacing:1.4px;color:#8fb5c2;margin-bottom:5px}
+#arSettings .opts{display:flex;gap:6px;flex-wrap:wrap}
+#arSettings .opt{flex:1;min-width:56px;padding:7px 4px;border-radius:9px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#cfe4ec;font-family:Menlo,monospace;font-size:10.5px;letter-spacing:.5px;cursor:pointer;text-align:center;transition:all .15s}
+#arSettings .opt.on{background:rgba(127,224,176,.16);border-color:rgba(127,224,176,.8);color:#7fe0b0}
+#arSettings .crow{display:flex;gap:8px;flex-wrap:wrap}
+#arSettings .cdot2{width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.25);cursor:pointer;padding:0}
+#arSettings .cdot2.on{border-color:#7fe0b0;box-shadow:0 0 10px rgba(127,224,176,.5)}
 .ar-colors{position:absolute;top:calc(60px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));display:none;flex-direction:column;gap:10px;background:rgba(18,18,20,.82);padding:12px 9px;border-radius:99px;z-index:5}
 .ar-colors.show{display:flex}
 .ar-cdot{width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.3);cursor:pointer;padding:0;transition:transform .15s}
@@ -350,6 +364,10 @@ input[type=file]{display:none}
   <path d="M6.4 20.6V17h3.6"/>
 </symbol>
 <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.6 6.6l10.8 10.8M17.4 6.6L6.6 17.4"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24">
+  <circle cx="12" cy="12" r="3.1"/>
+  <path d="M12 3.4v2.2M12 18.4v2.2M3.4 12h2.2M18.4 12h2.2M5.9 5.9l1.6 1.6M16.5 16.5l1.6 1.6M18.1 5.9l-1.6 1.6M7.5 16.5l-1.6 1.6"/>
+</symbol>
 <symbol id="i-dl" viewBox="0 0 24 24">
   <path d="M12 4.2v9.6"/><path d="M8.1 10.4l3.9 3.9 3.9-3.9"/><path d="M5 19.2h14"/>
 </symbol>
@@ -376,6 +394,14 @@ input[type=file]{display:none}
   </div>
   <div id="arColors" class="ar-colors"></div>
   <div id="arFlash"></div>
+  <button id="arGear" class="ar-gear"><svg class="icn" viewBox="0 0 24 24"><use href="#i-gear"/></svg></button>
+  <div id="arSettings" class="ar-glass">
+    <div class="t">SETTINGS</div>
+    <div class="sec"><div class="sl">DISTANCE UNIT</div><div class="opts" id="setDist"></div></div>
+    <div class="sec"><div class="sl">HEIGHT UNIT</div><div class="opts" id="setHeight"></div></div>
+    <div class="sec"><div class="sl">TRACER COLOR</div><div class="crow" id="setTCol"></div></div>
+    <div class="sec"><div class="sl">DISTANCE LABEL COLOR</div><div class="crow" id="setLCol"></div></div>
+  </div>
   <span id="arFps"></span>
   <div id="arCalib" class="ar-glass"></div>
   <div id="arStatus" class="ar-glass"></div>
@@ -1119,8 +1145,18 @@ let prevGray=null,clubSeen=false,clubBox=null;
 let vel={x:0,y:0},lostN=0,tImpact=0,trail=[],seedCol=[245,245,245];
 let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=false,lastGray=null;
 let kf=null,trackMatched=0,trackTotal=0,predPts=null;
-let tracerCol=(function(){try{return localStorage.getItem('golftar_c')||'#ff4d00';}catch(e){return '#ff4d00';}})(),impactCnt=0;
+let tracerCol=SET.tracer,impactCnt=0;
 let frameCount=0,fpsEma=0,lastLumaAvg=0.5,calibDone=false,lastLatM=0,lastCarryM=0;
+/* تنظیمات کاربر — واحدها و رنگ‌ها (ذخیره‌ی دائمی) */
+const SET=(function(){
+  const def={dist:'m',height:'m',tracer:'#ff4d00',label:'#ffd166'};
+  try{return Object.assign(def,JSON.parse(localStorage.getItem('golftar_set')||'{}'));}catch(e){return def;}
+})();
+function saveSet(){try{localStorage.setItem('golftar_set',JSON.stringify(SET));}catch(e){}}
+const DISTS={m:{n:'M',f:v=>v,k:1},yd:{n:'YD',f:v=>v*1.09361,k:1.09361},ft:{n:'FT',f:v=>v*3.28084,k:3.28084}};
+const HEIGHTS={m:{n:'M',f:v=>v},yd:{n:'YD',f:v=>v*1.09361},ft:{n:'FT',f:v=>v*3.28084}};
+function distTxt(m,dec){return (m*DISTS[SET.dist].k).toFixed(dec===undefined?1:dec)+' '+SET.dist.toUpperCase();}
+function hTxt(m){return (m*HEIGHTS[SET.height].f).toFixed(1)+' '+SET.height.toUpperCase();}
 let rec=null,chunks=[],clipUrl=null,lastMedia=null,beepCtx=null;
 
 /* ================= ماژول فیزیک (GolfPhysicsEngine) — سند §14-25 ================= */
@@ -1639,10 +1675,10 @@ function finishShot(el,reason){
   const rows=[];
   if(A.ballSpeedMps)rows.push(['BALL SPEED',(A.ballSpeedMps*MPH).toFixed(1)+' MPH','EST']);
   if(A.launchDeg!==null&&A.launchDeg!==undefined)rows.push(['LAUNCH',A.launchDeg.toFixed(1)+'°','EST']);
-  if(A.carryM)rows.push(['CARRY',(A.carryM*YD).toFixed(0)+' YD','EST']);
-  rows.push(['APEX',(apexM*YD).toFixed(1)+' YD','EST']);
-  rows.push(['LATERAL',((lastLatM>=0?'+':'')+(lastLatM*YD).toFixed(1))+' YD','EST']);
-  rows.push(['LIVE','≈'+distNow.toFixed(1)+' M','']);
+  if(A.carryM)rows.push(['CARRY',lastCarryM.toFixed(1)+' '+SET.dist.toUpperCase(),'EST']);
+  rows.push(['APEX',hTxt(apexM),'EST']);
+  rows.push(['LATERAL',((lastLatM>=0?'+':'')+distTxt(Math.abs(lastLatM),1)),'EST']);
+  rows.push(['LIVE','≈'+distTxt(distNow,1),'']);
   rows.push(['TRACKING',conf+'%',conf>=85?'HIGH':'']);
   let html='<div class="hdr">TRAJECTORY LOCKED ✓'+(A.shape&&A.shape!=='—'?' · '+A.shape:'')+'</div>';
   html+=rows.map(r=>'<div class="row"><span class="lbl">'+r[0]+'</span><span class="val">'+r[1]+(r[2]?'<i class="tag">'+r[2]+'</i>':'')+'</span></div>').join('');
@@ -1716,7 +1752,7 @@ function drawTracer(pts){
   ctx.strokeStyle=hexA(tracerCol,0.45);ctx.lineWidth=lw*1.6;tracePath(s);ctx.stroke();
   ctx.strokeStyle=tracerCol;ctx.lineWidth=lw;tracePath(s);ctx.stroke();
 }
-/* پالت رنگ tracer */
+/* پالت رنگ tracer (سریع) + پنل تنظیمات کامل */
 (function(){
   const COLS=['#ff4d00','#ffe600','#39d98a','#00e5ff','#ff4dd2','#ffffff','#4d79ff'];
   const cw=$('arColors');
@@ -1725,15 +1761,50 @@ function drawTracer(pts){
     b.className='ar-cdot'+(c===tracerCol?' on':'');
     b.style.background=c;
     b.onclick=()=>{
-      tracerCol=c;
-      try{localStorage.setItem('golftar_c',c);}catch(e){}
+      tracerCol=c;SET.tracer=c;saveSet();
       document.querySelectorAll('.ar-cdot').forEach(x=>x.classList.toggle('on',x===b));
+      syncSettingsUI();
       cw.classList.remove('show');beep(700);
     };
     cw.appendChild(b);
   });
-  $('arPal').onclick=()=>{cw.classList.toggle('show');beep(600);};
+  $('arPal').onclick=()=>{cw.classList.toggle('show');$('arSettings').classList.remove('show');beep(600);};
 })();
+
+/* ---- پنل تنظیمات ---- */
+const LCAND=['#ffd166','#ffffff','#7fe0b0','#ff4d00','#00e5ff','#ff4dd2'];
+function optRow(el,items,cur,cb){
+  el.innerHTML='';
+  items.forEach(it=>{
+    const b=document.createElement('button');
+    b.className='opt'+(it.v===cur?' on':'');
+    b.textContent=it.n;
+    b.onclick=()=>{cb(it.v);saveSet();syncSettingsUI();beep(640);};
+    el.appendChild(b);
+  });
+}
+function colRow(el,cands,cur,cb){
+  el.innerHTML='';
+  cands.forEach(c=>{
+    const b=document.createElement('button');
+    b.className='cdot2'+(c===cur?' on':'');
+    b.style.background=c;
+    b.onclick=()=>{cb(c);saveSet();syncSettingsUI();beep(640);};
+    el.appendChild(b);
+  });
+}
+function syncSettingsUI(){
+  optRow($('setDist'),Object.keys(DISTS).map(k=>({v:k,n:DISTS[k].n})),SET.dist,v=>SET.dist=v);
+  optRow($('setHeight'),Object.keys(HEIGHTS).map(k=>({v:k,n:HEIGHTS[k].n})),SET.height,v=>SET.height=v);
+  colRow($('setTCol'),LCAND,SET.tracer,v=>{SET.tracer=v;tracerCol=v;});
+  colRow($('setLCol'),LCAND,SET.label,v=>SET.label=v);
+}
+syncSettingsUI();
+$('arGear').onclick=()=>{
+  $('arSettings').classList.toggle('show');
+  $('arColors').classList.remove('show');
+  beep(600);
+};
 
 /* ---------- HUD فقط-آیکون ---------- */
 function drawHud(){
@@ -1787,9 +1858,9 @@ function drawHud(){
     ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(lp.x*SCX,lp.y*SCY,br,0,7);ctx.fill();
     ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1.5;
     ctx.beginPath();ctx.arc(lp.x*SCX,lp.y*SCY,br+4,0,7);ctx.stroke();
-    /* مسافت زنده‌ی افزایشی زیر توپ */
-    const label='≈ '+faNum(distNow.toFixed(1))+' م';
-    ctx.font='bold 17px Tahoma';
+    /* مسافت زنده‌ی افزایشی زیر توپ — واحد/رنگ از تنظیمات کاربر */
+    const label='≈ '+distTxt(distNow,1);
+    ctx.font='bold 15px Menlo,monospace';
     const w=ctx.measureText(label).width+22;
     const bx=clampN(lp.x*SCX-w/2,6,cv.width-w-6);
     const by=Math.min(lp.y*SCY+16,cv.height-46);
@@ -1797,8 +1868,8 @@ function drawHud(){
     ctx.beginPath();
     ctx.moveTo(bx+9,by);ctx.arcTo(bx+w,by,bx+w,by+30,9);ctx.arcTo(bx+w,by+30,bx,by+30,9);
     ctx.arcTo(bx,by+30,bx,by,9);ctx.arcTo(bx,by,bx+w,by,9);ctx.closePath();ctx.fill();
-    ctx.strokeStyle='#34c759';ctx.lineWidth=1.5;ctx.stroke();
-    ctx.fillStyle='#ffd166';ctx.fillText(label,bx+11,by+21);
+    ctx.strokeStyle=hexA(SET.label,0.75);ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle=SET.label;ctx.fillText(label,bx+11,by+21);
   }
 }
 
@@ -1847,9 +1918,11 @@ function updPanels(dt){
   frameCount++;
   const f=dt>0?1/dt:0;fpsEma=fpsEma?fpsEma*0.92+f*0.08:f;
   const overlayOn=$('arOverlay').classList.contains('on')&&mode!=='none';
+  $('arGear').classList.toggle('show',overlayOn);
   if(!overlayOn){
     fpsChip.style.display='none';calibEl.style.display='none';statusEl.style.display='none';
     pipeEl.style.display='none';mapWrap.style.display='none';calibDone=false;
+    $('arSettings').classList.remove('show');
     return;
   }
   if(frameCount%12===0)fpsChip.textContent='≈'+Math.round(fpsEma)+' FPS · FRAME '+String(frameCount%100000).padStart(3,'0');
