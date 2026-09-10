@@ -322,7 +322,7 @@ const wmImg=new Image();let wmOk=false;
 wmImg.onload=()=>{wmOk=true;};wmImg.src='appicon.png';
 function drawWM(){
   if(!wmOk)return;
-  const s=cv.height*0.052,x=cv.width/2-s/2,y=cv.height*0.793,r=s*0.24;
+  const s=cv.height*0.048,x=cv.width/2-s/2,y=cv.height*0.888,r=s*0.24;
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(x+r,y);ctx.arcTo(x+s,y,x+s,y+s,r);ctx.arcTo(x+s,y+s,x,y+s,r);ctx.arcTo(x,y+s,x,y,r);ctx.arcTo(x,y,x+s,y,r);ctx.closePath();
@@ -507,6 +507,7 @@ function stopAll(){
   ball=null;prevGray=null;prevCand=null;ballStable=0;trail=[];clubSeen=false;clubBox=null;
   $('arStBall').className='ar-chipic';$('arStClub').className='ar-chipic';
   $('arShutter').classList.remove('rec','done');
+  if(endTimer){clearTimeout(endTimer);endTimer=null;}
   const hiders=['arFps','arCalib'];
   hiders.forEach(id=>{const el=$(id);if(el)el.style.display='none';});
   calibDone=false;lastCarryM=0;
@@ -537,6 +538,8 @@ async function startCam(){
 }
 function startDemo(){toast('دمو در این نسخه حذف شد — دوربین واقعی فعال است');}
 function resetShot(){
+  if(endTimer){clearTimeout(endTimer);endTimer=null;stopRec();}
+  cardHtml=null;
   ball=null;prevCand=null;ballStable=0;trail=[];prevGray=null;vel={x:0,y:0};
   outN=0;lowRun=0;detectMiss=0;lowThr=false;clubSeen=false;clubBox=null;impactCnt=0;
   setPhase('detect');
@@ -861,12 +864,8 @@ function analyzeShot(reason){
 function finishShot(el,reason){
   if(phase!=='track')return;
   setPhase('done');
-  stopRec();
-  let poster=null;try{poster=cv.toDataURL('image/jpeg',0.92);}catch(e){}
-  lastMedia={url:clipUrl,poster:poster,name:'puttclub-shot.'+(recMime.indexOf('mp4')>=0?'mp4':'webm')};
-  try{if(poster)setThumb(poster);}catch(e){}
-  try{$('arThumb').classList.add('pulse');setTimeout(()=>{$('arThumb').classList.remove('pulse');},9000);}catch(e){}
-  toast('کلیپ + صدا آماده — تامبنیل را بزن → Save to Photos',5200);
+  lastMedia=null;cardHtml=null;
+  try{$('arThumb').classList.remove('show','pulse');}catch(e){}
   const flight=el||((performance.now()-tImpact)/1000);
   const apexM=trail.length?Math.max(0,trail[0].y-apexY)/pxPerMeter:0;
   const A=analyzeShot(reason);
@@ -899,9 +898,58 @@ function finishShot(el,reason){
   if(reason==='lost')html+='<div class="sub2" style="direction:ltr">✕ BALL LEFT FRAME</div>';
   if(clipUrl)html+='<a class="ar-icbtn" style="margin-top:8px" href="'+clipUrl+'" download="puttclub-shot.'+(recMime.indexOf('mp4')>=0?'mp4':'webm')+'"><svg class="icn" viewBox="0 0 24 24"><use href="#i-dl"/></svg></a>';
   html+='<div class="site">P U T T C L U B . I R</div>';
-  $('arSummary').innerHTML=html;
-  $('arSummary').classList.add('show');}
+  /* کارت روی بوم → داخل ویدیو ثبت می‌شود؛ ضبط ۵ثانیه دیگر ادامه دارد */
+  drawEndCard(rows,reason==='lost');
+  cardHtml=html;
+  endTimer=setTimeout(finalizeRec,5000);}
 
+/* کارت نتیجه روی بوم (ثبت‌شونده در ویدیو) + نهایی‌سازی تاخیری ضبط */
+let endTimer=null,cardHtml=null;
+function rrPath(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+function drawEndCard(rows,lost){
+  try{
+    const W=cv.width,H=cv.height;
+    const cw=Math.min(W*0.76,620),pad=cw*0.06;
+    const lineH=cw*0.082,brandH=cw*0.36,hdrH=cw*0.10,siteH=cw*0.16;
+    const ch=brandH+hdrH+rows.length*lineH+(lost?lineH:0)+siteH+pad*2;
+    const x=(W-cw)/2,y=(H-ch)/2-H*0.03,r=cw*0.075;
+    ctx.save();
+    ctx.fillStyle='rgba(13,17,20,0.82)';
+    rrPath(ctx,x,y,cw,ch,r);ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.18)';ctx.lineWidth=Math.max(1,cw*0.004);ctx.stroke();
+    if(wmOk){const s=cw*0.17,lx=(W-s)/2,ly=y+pad*0.7;
+      ctx.save();rrPath(ctx,lx,ly,s,s,s*0.24);ctx.clip();ctx.drawImage(wmImg,lx,ly,s,s);ctx.restore();}
+    ctx.textAlign='center';ctx.fillStyle='#9fe8c8';
+    ctx.font='600 '+String(Math.round(cw*0.05))+'px Menlo,monospace';
+    ctx.fillText('P U T T C L U B   V I S I O N',W/2,y+pad*0.7+cw*0.17+cw*0.08);
+    ctx.textAlign='left';ctx.fillStyle='#9fe8c8';
+    ctx.font='600 '+String(Math.round(cw*0.047))+'px Menlo,monospace';
+    let ry=y+brandH+pad*0.6;
+    ctx.fillText('TRAJECTORY LOCKED ✓',x+pad,ry);ry+=lineH*1.05;
+    ctx.font=String(Math.round(cw*0.051))+'px Menlo,monospace';
+    rows.forEach(rw=>{
+      ctx.textAlign='left';ctx.fillStyle='#8fb5c2';ctx.fillText(rw[0],x+pad,ry);
+      ctx.textAlign='right';ctx.fillStyle='#eef7fa';ctx.fillText(rw[1]+(rw[2]?'  ·'+rw[2]:''),x+cw-pad,ry);
+      ry+=lineH;
+    });
+    if(lost){ctx.textAlign='center';ctx.fillStyle='#ff9f8a';ctx.fillText('X BALL LEFT FRAME',W/2,ry);ry+=lineH;}
+    ry+=lineH*0.1;
+    ctx.strokeStyle='rgba(255,255,255,0.14)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x+pad,ry);ctx.lineTo(x+cw-pad,ry);ctx.stroke();
+    ctx.textAlign='center';ctx.fillStyle='#8fd8e8';
+    ctx.font='600 '+String(Math.round(cw*0.05))+'px Menlo,monospace';
+    ctx.fillText('P U T T C L U B . I R',W/2,ry+lineH*0.8);
+    ctx.restore();
+  }catch(e){}
+}
+function finalizeRec(){
+  stopRec();
+  let poster=null;try{poster=cv.toDataURL('image/jpeg',0.92);}catch(e){}
+  lastMedia={url:clipUrl||null,poster:poster,name:'puttclub-shot.'+(recMime.indexOf('mp4')>=0?'mp4':'webm')};
+  try{if(poster)setThumb(poster);}catch(e){}
+  try{$('arThumb').classList.add('pulse');setTimeout(()=>{$('arThumb').classList.remove('pulse');},9000);}catch(e){}
+  if(cardHtml){$('arSummary').innerHTML=cardHtml;$('arSummary').classList.add('show');cardHtml=null;}
+  toast('کلیپ کامل شد (با کارت نتیجه) — تامبنیل → Save to Photos',5200);
+}
 /* لمس روی تصویر در حالت جستجو/مسلح = قفل دستی توپ */
 cv.addEventListener('pointerdown',e=>{
   if(!$('arOverlay').classList.contains('on'))return;
