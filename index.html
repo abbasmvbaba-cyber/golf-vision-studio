@@ -814,6 +814,19 @@ function armedStep(gray,data,dt){
 
 /* ---------- فاز ۳: ردیابی پرواز — فیلتر کالمن + تحلیل علمی ضربه ---------- */
 let obs=[]; /* نمونه‌های (t,x,y) برای برازش */
+/* ---------- سپر ضدکلاب: در لحظه‌ی ضربه، بلابِ ناگهانیِ بزرگ کنار توپ = کلاب است ---------- */
+const clubShield={active:false,until:0,zone:{x:0,y:0,r:0}};
+function armClubShield(cx,cy){
+  /* وقتی حرکت انفجاری نزدیک توپ دیدیم: ۴۵۰ms ناحیه‌ی کلاب برای قفل بسته می‌شود */
+  clubShield.active=true;
+  clubShield.until=performance.now()+450;
+  clubShield.zone={x:cx,y:cy,r:clubShield.zone.r||Math.max(16,(ball.r||6)*3.5)};
+}
+function clubShieldBlocks(x,y){
+  if(!clubShield.active)return false;
+  if(performance.now()>clubShield.until){clubShield.active=false;return false;}
+  return Math.hypot(x-clubShield.zone.x,y-clubShield.zone.y)<=clubShield.zone.r+7; /* +7: لبه‌ی کلاب هم ممنوع */
+}
 function trackStep(gray,data,dt){
   kfPredict(kf,dt);
   const px=kf.s[0],py=kf.s[1];
@@ -821,19 +834,46 @@ function trackStep(gray,data,dt){
   const R=clampN((ball.r||6)*2.6+spd*dt*2.2,Math.max(7,(ball.r||6)*1.7),70);
   const seedL=(seedCol[0]*0.4+seedCol[1]*0.45+seedCol[2]*0.15)/255;
   const th=clampN(seedL*0.70,0.45,0.85);
+  /* محاسبه‌ی حرکت موضعی در همسایگی توپ → تشخیص گذر کلاب */
+  let moved=0,mcnt=0,mvx=0,mvy=0;
+  const MR=Math.max(22,Math.round((ball.r||6)*4));
+  const mx0=Math.max(1,Math.floor(px-MR)),mx1=Math.min(AW-2,Math.ceil(px+MR));
+  const my0=Math.max(1,Math.floor(py-MR)),my1=Math.min(AH-2,Math.ceil(py+MR));
+  if(prevGray){
+    for(let y=my0;y<=my1;y+=2)for(let x=mx0;x<=mx1;x+=2){
+      mcnt++;
+      if(Math.abs(gray[y*AW+x]-prevGray[y*AW+x])>0.13){moved++;mvx+=x;mvy+=y;}
+    }
+  }
+  const mdens=moved/Math.max(1,mcnt);
+  if((mdens>0.15||(moved>60&&mdens>0.12))&&clubShield.until<performance.now()-700){
+    /* زون = سانترویدِ ناحیه‌ی متحرک (خود کلاب) با شعاع پوشش واقعی کلاب */
+    const zx=mvx/moved,zy=mvy/moved;
+    const zr=clampN(MR*1.15,Math.max(18,(ball.r||6)*4),60); /* کل ناحیه‌ی متحرک (کلاب کامل) را بپوشاند */
+    armClubShield(zx,zy);
+    clubShield.zone.r=zr;
+  }
+  const Rshield=clubShield.active?R*2.4:R;
+  const Rx0=Math.max(1,Math.floor(px-Rshield)),Rx1=Math.min(AW-2,Math.ceil(px+Rshield));
+  const Ry0=Math.max(1,Math.floor(py-Rshield)),Ry1=Math.min(AH-2,Math.ceil(py+Rshield));
   let best=-1e9,bx=-1,by=-1;
-  const x0=Math.max(1,Math.floor(px-R)),x1=Math.min(AW-2,Math.ceil(px+R));
-  const y0=Math.max(1,Math.floor(py-R)),y1=Math.min(AH-2,Math.ceil(py+R));
+  const x0=Rx0,x1=Rx1,y0=Ry0,y1=Ry1;
+  const ddW=clubShield.active?1.0:1.6; /* هنگام سپر: تعادل فاصله/روشایی — لبه‌ی کلاب نبرد */
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+    if(clubShieldBlocks(x,y))continue; /* پیکسل‌های ناحیه‌ی کلاب هیچ‌وقت کاندید نمی‌شوند */
     const l=gray[y*AW+x];if(l<th)continue;
     const j=(y*AW+x)*4;
     const cs=1-(Math.abs(data[j]-seedCol[0])+Math.abs(data[j+1]-seedCol[1])+Math.abs(data[j+2]-seedCol[2]))/765;
     const dd=Math.hypot(x-px,y-py);
-    const s=l*100+cs*40-dd*1.6;
+    const s=l*100+cs*40-dd*ddW;
     if(s>best){best=s;bx=x;by=y;}
   }
   let matched=false;
+  const jumpGuard=clubShield.active?Rshield*1.05:(R*3+spd*dt*3);
   if(bx>=0&&Math.hypot(bx-px,by-py)<R*1.05){
+    /* نگهبان پرش: وقتی سپر کلاب فعال است سخت‌گیرتر؛ در حال عادی رشد طبیعی پرواز را اجازه بده */
+    if(Math.hypot(bx-px,by-py)>jumpGuard) { matched=false; }
+    else{
     kfUpdate(kf,bx,by,Math.max(4,(ball.r||6)*(ball.r||6)));
     matched=true;lostN=0;outN=0;lowRun=0;
     const nx=kf.s[0],ny=kf.s[1];
@@ -845,7 +885,9 @@ function trackStep(gray,data,dt){
     }
     if(ny<apexY)apexY=ny;
     lastSpd=Math.hypot(kf.s[2],kf.s[3])/pxPerMeter;
-  }else{
+    }
+  }
+  if(!matched){
     lostN++;
     if(px<-8||px>AW+8||py<-8||py>AH+8)outN++;
     if(lastSpd<0.09)lowRun+=dt;else lowRun=0;
@@ -853,6 +895,7 @@ function trackStep(gray,data,dt){
   trackMatched+=matched?1:0;
   trackTotal++;
   distNow=Math.hypot(kf.s[0]-trail[0].x,(kf.s[1]-trail[0].y)*0.35)*XM()/pxPerMeter;
+  prevGray=gray;
   const el=(performance.now()-tImpact)/1000;
   if(outN>50){finishShot(el,'out');return;}
   if(lostN>90){finishShot(el,'lost');return;}
