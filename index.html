@@ -353,7 +353,7 @@ function saveSet(){try{localStorage.setItem('golftar_set',JSON.stringify(SET));}
 const DISTS={m:{n:'M',f:v=>v,k:1},yd:{n:'YD',f:v=>v*1.09361,k:1.09361},ft:{n:'FT',f:v=>v*3.28084,k:3.28084}};
 const HEIGHTS={m:{n:'M',f:v=>v},yd:{n:'YD',f:v=>v*1.09361},ft:{n:'FT',f:v=>v*3.28084}};
 function distTxt(m,dec){return (m*DISTS[SET.dist].k).toFixed(dec===undefined?1:dec)+' '+SET.dist.toUpperCase();}
-function hTxt(m){return (m*HEIGHTS[SET.height].f).toFixed(1)+' '+SET.height.toUpperCase();}
+function hTxt(m){if(!isFinite(m))return '—';return (HEIGHTS[SET.height].f(m)||0).toFixed(1)+' '+SET.height.toUpperCase();}
 let tracerCol=SET.tracer,impactCnt=0;
 let frameCount=0,fpsEma=0,lastLumaAvg=0.5,calibDone=false,lastLatM=0,lastCarryM=0;
 let rec=null,chunks=[],clipUrl=null,lastMedia=null,beepCtx=null,recMime='';
@@ -512,10 +512,7 @@ async function startCam(){
     toast('دسترسی دوربین داده نشد — از تنظیمات مرورگر مجاز کن و دکمه را دوباره بزن');
   }
 }
-function startDemo(){
-  stopAll();mode='demo';demo=makeARDemo();demoT=0;
-  setPhase('detect');
-}
+function startDemo(){toast('دمو در این نسخه حذف شد — دوربین واقعی فعال است');}
 function resetShot(){
   ball=null;prevCand=null;ballStable=0;trail=[];prevGray=null;vel={x:0,y:0};
   outN=0;lowRun=0;detectMiss=0;lowThr=false;clubSeen=false;clubBox=null;impactCnt=0;
