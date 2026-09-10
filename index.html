@@ -347,7 +347,8 @@ let phase='off'; /* off | detect | armed | track | done */
 let ball=null,ballStable=0,prevCand=null,pxPerMeter=80;
 let prevGray=null,clubSeen=false,clubBox=null;
 let vel={x:0,y:0},lostN=0,tImpact=0,trail=[],seedCol=[245,245,245];
-let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=false,lastGray=null;
+let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=false,lastGray=null,lastData=null;
+const ballDet={lastR:0};
 let kf=null,trackMatched=0,trackTotal=0,predPts=null;
 /* تنظیمات کاربر — واحدها و رنگ‌ها (ذخیره‌ی دائمی) */
 const SET=(function(){
@@ -681,63 +682,148 @@ async function offerSave(){
 $('arThumb').onclick=()=>{beep(760);offerSave().then(ok=>{if(!ok)toast('از شیست، Save to Photos را بزن',3200);});};
 
 /* ---------- فاز ۱: شناسایی توپ — بلاب روشنِ گرد + حلقه‌ی تیره‌تر (مقیاس‌پذیر) ---------- */
-function detectStep(gray){
-  const TH=lowThr?0.58:0.72;
+/* ================= تشخیص توپ واقعی — PATCH 1/2/8/11/12 =================
+   توپ = کم‌اشباع (سفید) + روشن‌تر از زمینه + گرد + حلقه‌ی تیره + پایدار چندفریمی */
+function satOf(data,j){
+  const r=data[j],g=data[j+1],b=data[j+2];
+  const mx=r>g?(r>b?r:b):(g>b?g:b), mn=r<g?(r<b?r:b):(g<b?g:b);
+  return mx<8?0:(mx-mn)/mx;
+}
+function detectStep(gray,data){
   const N=AW*AH;
+  let TH=lowThr?0.55:0.66;
+  if(lastLumaAvg>0.72)TH+=0.06;else if(lastLumaAvg<0.3)TH-=0.07; /* PATCH 12 نور */
+  const sTh=lowThr?0.34:0.26;          /* آستانه‌ی اشباعی — سفیدِ واقعی */
   const seen=new Uint8Array(N);
   const qx=new Int32Array(N);
   let best=null;
   for(let i=0;i<N;i++){
-    if(seen[i]||gray[i]<TH)continue;
+    const j=i*4;
+    if(seen[i]||gray[i]<TH||satOf(data,j)>sTh)continue;
     let head=0,tail=0;qx[tail++]=i;seen[i]=1;
     let cnt=0,sx=0,sy=0,sum=0,minx=AW,maxx=0,miny=AH,maxy=0;
     while(head<tail&&cnt<=40000){
       const p=qx[head++];const py=(p/AW)|0,px=p-py*AW;
       cnt++;sx+=px;sy+=py;sum+=gray[p];
       if(px<minx)minx=px;if(px>maxx)maxx=px;if(py<miny)miny=py;if(py>maxy)maxy=py;
-      if(px>0&&gray[p-1]>=TH&&!seen[p-1]){seen[p-1]=1;qx[tail++]=p-1;}
-      if(px<AW-1&&gray[p+1]>=TH&&!seen[p+1]){seen[p+1]=1;qx[tail++]=p+1;}
-      if(py>0&&gray[p-AW]>=TH&&!seen[p-AW]){seen[p-AW]=1;qx[tail++]=p-AW;}
-      if(py<AH-1&&gray[p+AW]>=TH&&!seen[p+AW]){seen[p+AW]=1;qx[tail++]=p+AW;}
+      if(px>0&&!seen[p-1]&&gray[p-1]>=TH&&satOf(data,(p-1)*4)<=sTh){seen[p-1]=1;qx[tail++]=p-1;}
+      if(px<AW-1&&!seen[p+1]&&gray[p+1]>=TH&&satOf(data,(p+1)*4)<=sTh){seen[p+1]=1;qx[tail++]=p+1;}
+      if(py>0&&!seen[p-AW]&&gray[p-AW]>=TH&&satOf(data,(p-AW)*4)<=sTh){seen[p-AW]=1;qx[tail++]=p-AW;}
+      if(py<AH-1&&!seen[p+AW]&&gray[p+AW]>=TH&&satOf(data,(p+AW)*4)<=sTh){seen[p+AW]=1;qx[tail++]=p+AW;}
     }
-    if(cnt<10)continue;
+    if(cnt<8)continue;
     const cx=sx/cnt,cy=sy/cnt;
     const r=Math.sqrt(cnt/Math.PI);
-    if(r<1.6||r>75)continue;
+    if(r<1.6||r>30)continue;                /* سند: مساحت ۲۵-۲۵۰۰px² — بزرگ = پیراهن */
     const bw=maxx-minx+1,bh=maxy-miny+1;
-    if(bw/bh>2.4||bh/bw>2.4)continue;      /* کشیده = دست/چوب، نه توپ */
-    const fillTh=r<4?0.42:0.55;             /* توپ کوچک raster نرم‌تری دارد */
+    const asp=bw>bh?bw/bh:bh/bw;
+    if(asp>2.2)continue;                    /* کشیده = دست/چوب/نوار */
+    const fillTh=r<4?0.4:0.52;
     if(cnt/(bw*bh)<fillTh)continue;         /* توخالی/نامنظم = لباس */
     const mean=sum/cnt;
     if(mean<TH+0.02)continue;
-    const R=r*1.45+2;let ring=0,n=0;       /* حلقه در مقیاس خود توپ */
+    const R2=r*1.45+2;let ring=0,n=0;
     for(let k=0;k<16;k++){
       const a=k*0.3927;
-      const rx=Math.round(cx+Math.cos(a)*R),ry=Math.round(cy+Math.sin(a)*R);
+      const rx=Math.round(cx+Math.cos(a)*R2),ry=Math.round(cy+Math.sin(a)*R2);
       if(rx<0||rx>=AW||ry<0||ry>=AH)continue;
       ring+=gray[ry*AW+rx];n++;
     }
     if(n<10)continue;ring/=n;
     const diff=mean-ring;
-    if(!isFinite(diff)||diff<0.06)continue;  /* برق پوست/شیشه: حلقه هم روشن است */
-    const score=mean+diff*2.5+(cy/AH)*0.4;
+    if(!isFinite(diff)||diff<0.05)continue; /* بدون سایه = برق/انعکاس */
+    const dcirc=(Math.min(bw,bh)/2)/r;      /* PATCH 2: دایره‌بودگی */
+    if(dcirc<0.62||dcirc>1.45)continue;
+    const score=mean+diff*2.5+(1-Math.abs(dcirc-1))*0.5;
     if(!best||score>best.score)best={x:cx,y:cy,r,score};
   }
   if(!best){
     prevCand=null;ballStable=0;detectMiss++;
-    if(detectMiss>40&&!lowThr){lowThr=true;detectMiss=0;} /* صحنه تاریک: آستانه پایین */
+    if(detectMiss>40&&!lowThr){lowThr=true;detectMiss=0;}
     return;
   }
   detectMiss=0;
+  /* PATCH 11: پرش غیرممکن شعاع رد شود */
+  if(ballDet.lastR>0&&ballStable>0&&Math.abs(best.r-ballDet.lastR)>ballDet.lastR*0.6){
+    ballDet.lastR=best.r*0.5+ballDet.lastR*0.5;return;
+  }
+  ballDet.lastR=best.r;
   const tol=Math.max(6,best.r*0.9);
   if(prevCand&&Math.hypot(best.x-prevCand.x,best.y-prevCand.y)<tol)ballStable++;
   else ballStable=1;
   prevCand=best;
-  /* قفل فقط با لمس کاربر — detection فقط کمکی است */
+  /* قفل فقط با لمس کاربر — قفل فقط با لمس است — تشخیص چندفریمی فقط اعتماد به هینت را بالا می‌برد */
 }
-/* قفل دستی: ساده و قطعی — روشن‌ترین نقطه‌ی اطراف لمس + اندازه از همون حوالی */
+/* کاندید توپ در پنجره‌ی ۵۰px دور لمس — همان معیارهای detectStep */
+function localBallCandidate(cxp,cyp){
+  try{
+    const RR=50;
+    const x0=Math.max(1,Math.round(cxp-RR)),x1=Math.min(AW-2,Math.round(cxp+RR));
+    const y0=Math.max(1,Math.round(cyp-RR)),y1=Math.min(AH-2,Math.round(cyp+RR));
+    const TH=lowThr?0.55:0.66, sTh=lowThr?0.34:0.26;
+    const seen=new Uint8Array(AW*AH);
+    const qx=new Int32Array(4096);
+    let best=null;
+    for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+      const i=y*AW+x,j=i*4;
+      if(seen[i]||lastGray[i]<TH||satOf(lastData,j)>sTh)continue;
+      let head=0,tail=0;qx[tail++]=i;seen[i]=1;
+      let cnt=0,sx=0,sy=0,sum=0,minx=AW,maxx=0,miny=AH,maxy=0;
+      while(head<tail&&cnt<=20000&&tail<4090){
+        const p=qx[head++];const py=(p/AW)|0,px=p-py*AW;
+        cnt++;sx+=px;sy+=py;sum+=lastGray[p];
+        if(px<minx)minx=px;if(px>maxx)maxx=px;if(py<miny)miny=py;if(py>maxy)maxy=py;
+        if(px>0&&!seen[p-1]&&lastGray[p-1]>=TH&&satOf(lastData,(p-1)*4)<=sTh){seen[p-1]=1;qx[tail++]=p-1;}
+        if(px<AW-1&&!seen[p+1]&&lastGray[p+1]>=TH&&satOf(lastData,(p+1)*4)<=sTh){seen[p+1]=1;qx[tail++]=p+1;}
+        if(py>0&&!seen[p-AW]&&lastGray[p-AW]>=TH&&satOf(lastData,(p-AW)*4)<=sTh){seen[p-AW]=1;qx[tail++]=p-AW;}
+        if(py<AH-1&&!seen[p+AW]&&lastGray[p+AW]>=TH&&satOf(lastData,(p+AW)*4)<=sTh){seen[p+AW]=1;qx[tail++]=p+AW;}
+      }
+      if(cnt<8)continue;
+      const cx=sx/cnt,cy=sy/cnt;
+      const r=Math.sqrt(cnt/Math.PI);
+      if(r<1.6||r>30)continue;              /* سند: مساحت ۲۵-۲۵۰۰px² */
+      const bw=maxx-minx+1,bh=maxy-miny+1;
+      const asp=bw>bh?bw/bh:bh/bw;
+      if(asp>2.2)continue;
+      if(cnt/(bw*bh)<(r<4?0.4:0.52))continue;
+      const mean=sum/cnt;
+      if(mean<TH+0.02)continue;
+      const R2=r*1.45+2;let ring=0,n=0;
+      for(let k=0;k<16;k++){
+        const a=k*0.3927;
+        const rx=Math.round(cx+Math.cos(a)*R2),ry=Math.round(cy+Math.sin(a)*R2);
+        if(rx<0||rx>=AW||ry<0||ry>=AH)continue;
+        ring+=lastGray[ry*AW+rx];n++;
+      }
+      if(n<10)continue;ring/=n;
+      const diff=mean-ring;
+      if(!isFinite(diff)||diff<0.05)continue;
+      const dist=Math.hypot(cx-cxp,cy-cyp);
+      const score=(mean+diff*2.5)*0.75+(1-dist/RR)*0.6;
+      if(!best||score>best.score)best={x:cx,y:cy,r,score};
+    }
+    return best;
+  }catch(e){return null;}
+}
+/* قفل توپ در نقطه‌ی داده‌شده — منطق مشترک لمس/چسبان */
+function lockBallAt(lx,ly,lr){
+  const r=clampN(lr,2,60);
+  pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
+  if(stickyTimer){clearTimeout(stickyTimer);stickyTimer=null;}
+  sticky=null;
+  ball={x:lx,y:ly,d:r*2,r:r};
+  seedCol=sampleColor(lx,ly);
+  vel={x:0,y:0};lostN=0;outN=0;lowRun=0;kf=makeKF(lx,ly,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;trail=[{x:lx,y:ly}];apexY=ly;lmX=0;lmY=0;lmT=0;
+  prevGray=lastGray;armGrace=performance.now()+450;
+  setPhase('armed');beep(880);
+}
+/* لمس: اگر توپِ واقعی نزدیک لمس بود → همان؛ وگرنه روشن‌ترین نقطه (fallback) */
 function manualLock(cxp,cyp){
   if(!lastGray)return;
+  { /* PATCH: کاندید واقعی دور لمس (سفید+گرد+سایه) */
+    const c=localBallCandidate(cxp,cyp);
+    if(c){lockBallAt(c.x,c.y,c.r);return;}
+  }
   let bl=0,bx=cxp,by=cyp;
   for(let dy=-10;dy<=10;dy++)for(let dx=-10;dx<=10;dx++){
     const x=clampN(Math.round(cxp+dx),0,AW-1),y=clampN(Math.round(cyp+dy),0,AH-1);
@@ -748,15 +834,7 @@ function manualLock(cxp,cyp){
     const x=clampN(bx+dx,0,AW-1),y=clampN(by+dy,0,AH-1);
     if(lastGray[y*AW+x]>bl-0.28)cnt++;
   }
-  const r=clampN(Math.sqrt(cnt/Math.PI),2,60);
-  pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
-  if(stickyTimer){clearTimeout(stickyTimer);stickyTimer=null;}
-  sticky=null;
-  ball={x:bx,y:by,d:r*2,r:r};
-  seedCol=sampleColor(bx,by);
-  vel={x:0,y:0};lostN=0;outN=0;lowRun=0;kf=makeKF(bx,by,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;trail=[{x:bx,y:by}];apexY=by;
-  prevGray=lastGray;armGrace=performance.now()+450;
-  setPhase('armed');beep(880);
+  lockBallAt(bx,by,clampN(Math.sqrt(cnt/Math.PI),2,60));
 }
 function sampleColor(x,y){
   try{
@@ -776,10 +854,13 @@ function armedStep(gray,data,dt){
   let best=-1e9,bx=-1,by=-1;
   const x0=Math.max(1,Math.floor(ball.x-R)),x1=Math.min(AW-2,Math.ceil(ball.x+R));
   const y0=Math.max(1,Math.floor(ball.y-R)),y1=Math.min(AH-2,Math.ceil(ball.y+R));
+  const sTha=lowThr?0.30:0.24;
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
     const l=gray[y*AW+x];if(l<th)continue;
     const j=(y*AW+x)*4;
+    if(satOf(data,j)>sTha)continue; /* PATCH 40: توپِ سفید، نه زمینه */
     const cs=1-(Math.abs(data[j]-seedCol[0])+Math.abs(data[j+1]-seedCol[1])+Math.abs(data[j+2]-seedCol[2]))/765;
+    if(cs<0.78)continue;
     const s=l*100+cs*40-Math.hypot(x-ball.x,y-ball.y)*1.2;
     if(s>best){best=s;bx=x;by=y;}
   }
@@ -814,6 +895,7 @@ function armedStep(gray,data,dt){
 
 /* ---------- فاز ۳: ردیابی پرواز — فیلتر کالمن + تحلیل علمی ضربه ---------- */
 let obs=[]; /* نمونه‌های (t,x,y) برای برازش */
+let lmX=0,lmY=0,lmT=0; /* آخرین مچ — برای هم‌جوشی سرعت (حذف وقفه‌ی کالمن) */
 /* ---------- سپر ضدکلاب: در لحظه‌ی ضربه، بلابِ ناگهانیِ بزرگ کنار توپ = کلاب است ---------- */
 const clubShield={active:false,until:0,zone:{x:0,y:0,r:0}};
 function armClubShield(cx,cy){
@@ -859,11 +941,14 @@ function trackStep(gray,data,dt){
   let best=-1e9,bx=-1,by=-1;
   const x0=Rx0,x1=Rx1,y0=Ry0,y1=Ry1;
   const ddW=clubShield.active?1.0:1.6; /* هنگام سپر: تعادل فاصله/روشایی — لبه‌ی کلاب نبرد */
+  const sThk=lowThr?0.30:0.24; /* سفیدِ واقعی — زمینه‌ی رنگی (پتو/چمن) هرگز کاندید نیست */
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
     if(clubShieldBlocks(x,y))continue; /* پیکسل‌های ناحیه‌ی کلاب هیچ‌وقت کاندید نمی‌شوند */
     const l=gray[y*AW+x];if(l<th)continue;
     const j=(y*AW+x)*4;
+    if(satOf(data,j)>sThk)continue; /* PATCH 40: باید خودِ توپ باشد، نه روشن‌ترین زمینه */
     const cs=1-(Math.abs(data[j]-seedCol[0])+Math.abs(data[j+1]-seedCol[1])+Math.abs(data[j+2]-seedCol[2]))/765;
+    if(cs<0.78)continue; /* رنگ خیلی دور از سفیدِ توپ = زمینه */
     const dd=Math.hypot(x-px,y-py);
     const s=l*100+cs*40-dd*ddW;
     if(s>best){best=s;bx=x;by=y;}
@@ -875,6 +960,14 @@ function trackStep(gray,data,dt){
     if(Math.hypot(bx-px,by-py)>jumpGuard) { matched=false; }
     else{
     kfUpdate(kf,bx,by,Math.max(4,(ball.r||6)*(ball.r||6)));
+    /* PATCH 40: هم‌جوشی سرعت — کالمن باید خود توپ را برسد نه پشت سرش بیفتد */
+    const nowM=performance.now();
+    if(lmT>0){
+      const idt=Math.max(0.004,(nowM-lmT)/1000);
+      kf.s[2]=clampN(kf.s[2]*0.55+((bx-lmX)/idt)*0.45,-5000,5000);
+      kf.s[3]=clampN(kf.s[3]*0.55+((by-lmY)/idt)*0.45,-5000,5000);
+    }
+    lmX=bx;lmY=by;lmT=nowM;
     matched=true;lostN=0;outN=0;lowRun=0;
     const nx=kf.s[0],ny=kf.s[1];
     const lp=trail[trail.length-1];
@@ -891,11 +984,15 @@ function trackStep(gray,data,dt){
     lostN++;
     if(px<-8||px>AW+8||py<-8||py>AH+8)outN++;
     if(lastSpd<0.09)lowRun+=dt;else lowRun=0;
-    /* --- گیرفتن مجدد توپ سریع: حلقه‌ی گسترش‌یابنده دور آخرین موقعیت --- */
-    if(lostN>=1&&lostN<=16&&px>20&&px<AW-20&&py>20&&py<AH-20){
-      const RR1=Math.min(110,45+lostN*13),RR0=12; /* توپِ تازه‌ضربه در همان فریم اول چند ده px می‌پرد */
+    /* --- گیرفتن مجدد توپ سریع: حلقه‌ی گسترش‌یابنده دور آخرین موقعیت ---
+       PATCH 40: حین سپر کلاب غیرفعال (بلاب سفیدِ دور = کلاب است)؛
+       بلافاصله بعد از سپر: گرم با شعاع بلند (توپ ممکن است دور رفته باشد) */
+    const cool=performance.now()<clubShield.until+300;
+    const lnE=cool?Math.min(lostN,4):lostN;
+    if(!clubShield.active&&lnE>=1&&lnE<=16&&px>20&&px<AW-20&&py>20&&py<AH-20){
+      const RR1=cool?200:Math.min(110,45+lnE*13),RR0=12; /* بعد از سپر: توپ دور شده — شعاع بلند */
       let bb=-1e9,bx2=-1,by2=-1;
-      const stp=lostN>4?2:1;
+      const stp=(lnE>4||RR1>110)?2:1;
       const sx0=Math.max(1,Math.floor(px-RR1)),sx1=Math.min(AW-2,Math.ceil(px+RR1));
       const sy0=Math.max(1,Math.floor(py-RR1)),sy1=Math.min(AH-2,Math.ceil(py+RR1));
       for(let y2=sy0;y2<=sy1;y2+=stp)for(let x2=sx0;x2<=sx1;x2+=stp){
@@ -905,15 +1002,18 @@ function trackStep(gray,data,dt){
         const l2=gray[y2*AW+x2];if(l2<th)continue;
         if(prevGray&&(l2-prevGray[y2*AW+x2])<0.05)continue;
         const j2=(y2*AW+x2)*4;
+        if(satOf(data,j2)>sThk)continue; /* PATCH 40: کاندید باید سفیدِ واقعی باشد */
         const cs2=1-(Math.abs(data[j2]-seedCol[0])+Math.abs(data[j2+1]-seedCol[1])+Math.abs(data[j2+2]-seedCol[2]))/765;
-        const s2=l2*70+cs2*60-dd2*0.55;
+        if(cs2<0.78)continue;
+        const s2=l2*70+cs2*60-dd2*(cool?0.05:0.55); /* بعد از سپر فاصله جریمه‌ی سنگین ندارد */
         if(s2>bb){bb=s2;bx2=x2;by2=y2;}
       }
-      if(bx2>=0&&bb>92){
-        const ddt=Math.max(0.008,dt*(lostN+1));
+      if(bx2>=0&&bb>(cool?100:92)){
+        const ddt=Math.max(0.008,dt*(lnE+1));
         kf.s[2]=clampN((bx2-kf.s[0])/ddt,-5000,5000);
         kf.s[3]=clampN((by2-kf.s[1])/ddt,-5000,5000);
         kf.s[0]=bx2;kf.s[1]=by2;
+        lmX=bx2;lmY=by2;lmT=performance.now();
         lostN=0;outN=0;lowRun=0;
         const lp=trail[trail.length-1];
         if(Math.hypot(bx2-lp.x,by2-lp.y)>Math.max(0.8,(ball.r||6)*0.12)){
@@ -1404,9 +1504,9 @@ function loop(ts){
   let data;try{data=ax.getImageData(0,0,AW,AH).data;}catch(e){return;}
   const gray=new Float32Array(AW*AH);
   for(let i=0;i<AW*AH;i++){const j=i*4;gray[i]=(data[j]*0.4+data[j+1]*0.45+data[j+2]*0.15)/255;}
-  lastGray=gray;if(!prevGray)prevGray=gray;
+  lastGray=gray;lastData=data;if(!prevGray)prevGray=gray;
   if(frameCount%15===0){let s=0,n=0;for(let i=0;i<gray.length;i+=97){s+=gray[i];n++;}lastLumaAvg=s/n;}
-  if(phase==='detect')detectStep(gray);
+  if(phase==='detect')detectStep(gray,data);
   else if(phase==='armed'&&ball)armedStep(gray,data,dt);
   else if(phase==='track'&&ball)trackStep(gray,data,dt);
   drawHud();
