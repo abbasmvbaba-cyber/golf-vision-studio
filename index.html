@@ -128,7 +128,7 @@ input[type=file]{display:none}
 #arCalib{top:calc(86px + env(safe-area-inset-top));left:12px}
 #arStatus{top:calc(86px + env(safe-area-inset-top));right:12px}
 #arMapWrap{top:calc(292px + env(safe-area-inset-top));bottom:auto;right:12px}
-#arSummary{top:32%;max-width:min(320px,86vw)}
+#arSummary{max-width:min(212px,54vw)}
 #arSummary .val{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.4px}
 #arSummary .hdr{font-family:ui-monospace,Menlo,monospace}
 .ar-glass{background:rgba(15,19,23,.74);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:14px}
@@ -142,11 +142,11 @@ input[type=file]{display:none}
 #arPipeline{position:absolute;bottom:calc(118px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:none;font-size:9px;letter-spacing:1.6px;color:rgba(225,244,250,.8);background:rgba(15,19,23,.6);padding:5px 14px;border-radius:99px;white-space:nowrap;direction:ltr;z-index:3}
 #arMapWrap{position:absolute;bottom:calc(170px + env(safe-area-inset-bottom));right:12px;padding:9px 11px;display:none;z-index:3;direction:ltr}
 #arMap{display:block;width:118px;height:140px}
-#arSummary .hdr{font-size:10px;letter-spacing:2.5px;color:#9fe8c8;margin-bottom:7px;text-align:left;direction:ltr}
-#arSummary .row{display:flex;justify-content:space-between;align-items:center;gap:16px;font-size:12px;line-height:2.15;direction:ltr;text-align:left}
+#arSummary .hdr{font-size:9px;letter-spacing:1.8px;color:#9fe8c8;margin-bottom:5px;text-align:left;direction:ltr;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#arSummary .row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:10.5px;line-height:1.85;direction:ltr;text-align:left;white-space:nowrap}
 #arSummary .lbl{color:#8fb5c2;letter-spacing:1.2px}
 #arSummary .val{color:#eef7fa;font-weight:600}
-#arSummary .tag{font-style:normal;font-size:8px;color:#8fd8e8;border:1px solid rgba(143,216,232,.4);padding:0 5px;border-radius:99px;margin-left:6px;vertical-align:1px}
+#arSummary .tag{font-style:normal;font-size:7.5px;color:#8fd8e8;border:1px solid rgba(143,216,232,.4);padding:0 4px;border-radius:99px;margin-left:4px;vertical-align:1px}
 #statsModal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:600;display:none;overflow:auto}
 #statsModal.on{display:block}
 .statcard{background:#0f1a15;border:1px solid #1f2e27;border-radius:12px;padding:10px 12px;text-align:center}
@@ -180,7 +180,7 @@ input[type=file]{display:none}
 .ar-thumb.show{display:block}
 .ar-flip{position:absolute;bottom:calc(42px + env(safe-area-inset-bottom));right:calc(22px + env(safe-area-inset-right));width:52px;height:52px;border-radius:50%;border:none;background:rgba(40,40,40,.65);color:#fff;font-size:22px;cursor:pointer;z-index:3}
 .ar-icbtn{display:inline-flex;width:42px;height:42px;border-radius:50%;background:#173a2c;border:1px solid #2b6b50;color:#dff5ea;align-items:center;justify-content:center;font-size:18px;text-decoration:none;cursor:pointer;margin-top:10px}
-#arSummary{position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);background:rgba(10,10,12,.9);border:1px solid rgba(255,255,255,.14);border-radius:20px;padding:18px 32px;color:#fff;text-align:center;min-width:200px;display:none;z-index:4}
+#arSummary{position:absolute;top:calc(118px + env(safe-area-inset-top));left:calc(10px + env(safe-area-inset-left));transform:none;background:rgba(10,10,12,.88);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 12px;color:#fff;text-align:left;max-width:min(212px,54vw);display:none;z-index:2;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 #arSummary.show{display:block}
 #arSummary .big{font-size:38px;font-weight:800;color:#ffd166}
 #arSummary .big small{font-size:16px;color:rgba(255,255,255,.7);font-weight:600}
@@ -826,7 +826,7 @@ function finishShot(el,reason){
   stopRec();
   try{setThumb(cv.toDataURL('image/jpeg',0.72));}catch(e){}
   const flight=el||((performance.now()-tImpact)/1000);
-  const apexM=Math.max(0,trail[0].y-apexY)/pxPerMeter;
+  const apexM=trail.length?Math.max(0,trail[0].y-apexY)/pxPerMeter:0;
   const A=analyzeShot(reason);
   const trackRatio=trackTotal?trackMatched/trackTotal:0;
   /* نمره اطمینان — سند §33 */
@@ -837,7 +837,7 @@ function finishShot(el,reason){
   /* ذخیره — سند §36 */
   if(A.carryM||distNow>0){
     saveShot({t:Date.now(),club:'—',ballSpeedMps:A.ballSpeedMps,launchDeg:A.launchDeg,
-      carryM:A.carryM,apexM:apexM,flight:flight,shape:A.shape,conf:conf,dist:distNow,lat:lastLatM});
+      carryM:A.carryM,apexM:isFinite(apexM)?apexM:0,flight:flight,shape:A.shape,conf:conf,dist:distNow,lat:lastLatM});
     try{renderHistory();}catch(e){}
   }
   predPts=A.predPts||null;
@@ -847,7 +847,7 @@ function finishShot(el,reason){
   if(A.ballSpeedMps)rows.push(['BALL SPEED',(A.ballSpeedMps*MPH).toFixed(1)+' MPH','EST']);
   if(A.launchDeg!==null&&A.launchDeg!==undefined)rows.push(['LAUNCH',A.launchDeg.toFixed(1)+'°','EST']);
   if(A.carryM)rows.push(['CARRY',lastCarryM.toFixed(1)+' '+SET.dist.toUpperCase(),'EST']);
-  rows.push(['APEX',hTxt(apexM),'EST']);
+  rows.push(['APEX',isFinite(apexM)?hTxt(apexM):'—','EST']);
   rows.push(['LATERAL',((lastLatM>=0?'+':'')+distTxt(Math.abs(lastLatM),1)),'EST']);
   rows.push(['LIVE','≈'+distTxt(distNow,1),'']);
   rows.push(['TRACKING',conf+'%',conf>=85?'HIGH':'']);
