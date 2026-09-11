@@ -227,6 +227,63 @@ T('T16','autoLockStep null frame resets',function(){
   ok(r2.locked,'lock on 10th stable frame after gap');
 });
 
+
+/* T18 — calibBallPose: بازیابی پوز از داده‌ی مصنوعی */
+T('T18','calibBallPose round-trip',function(){
+  const f=272,fy=272,cx=160,cy=90,theta=0.38,h=1.2,d=2.4;
+  const cam={f:f,fy:fy,cx:cx,cy:cy,theta:theta,h:h,d:d,C:[0,-d,h]};
+  const pr=GVS.project(cam,[0,0,0.021335]);
+  ok(pr,'project null');
+  const r=f*(0.04267/2)/pr.z;
+  const rec=GVS.calibBallPose(f,fy,cx,cy,pr.u,pr.v,r);
+  ok(rec,'calib null');
+  near(rec.theta,theta,0.04,'theta');
+  near(rec.h,h,0.08,'h');
+  near(rec.d,d,0.12,'d');
+});
+
+/* T19 — fit3D: بازیابی v0 / elevation / carry */
+T('T19','fit3D recovers v0, elevation, carry',function(){
+  const cam={f:272,fy:272,cx:160,cy:90,theta:0.35,h:1.1,d:2.2,C:[0,-2.2,1.1]};
+  const v0=[4.181,38.69,9.70],spin=1.2;
+  const sim=GVS.simCarry3D(v0,spin);
+  const obs=[];
+  for(let i=4;i<sim.pts.length;i+=8){
+    const pr=GVS.project(cam,sim.pts[i]);
+    if(!pr)break;
+    obs.push({t:i*0.008,u:pr.u,v:pr.v});
+  }
+  ok(obs.length>=20,'obs too few: '+obs.length);
+  const f=GVS.fit3D(cam,obs,{vx:3,vy:34,vz:8,spin:1});
+  ok(f,'fit3D null');
+  near(f.v0,40,2,'v0');
+  near(f.elevDeg,14,1.2,'elev');
+  near(f.carry,sim.carry,2.5,'carry');
+});
+
+/* T20 — fit3D با نویز ±1.5px */
+T('T20','fit3D robust to 1.5px noise',function(){
+  const cam={f:272,fy:272,cx:160,cy:90,theta:0.35,h:1.1,d:2.2,C:[0,-2.2,1.1]};
+  const v0=[4.181,38.69,9.70];
+  const sim=GVS.simCarry3D(v0,1.2);
+  const obs=[];
+  for(let i=4;i<sim.pts.length;i+=8){
+    const pr=GVS.project(cam,sim.pts[i]);
+    if(!pr)break;
+    obs.push({t:i*0.008,u:pr.u+1.5*Math.sin(i*2.7),v:pr.v+1.5*Math.cos(i*1.9)});
+  }
+  const f=GVS.fit3D(cam,obs,{vx:3,vy:34,vz:8,spin:1});
+  ok(f,'fit3D null with noise');
+  near(f.v0,40,2.5,'v0 noisy');
+});
+
+/* T21 — calibBallPose ورودی‌های نامعتبر */
+T('T21','calibBallPose invalid inputs',function(){
+  ok(GVS.calibBallPose(272,272,160,90,160,100,0.5)===null,'too small r');
+  ok(GVS.calibBallPose(5,5,160,90,160,100,3)===null,'too small f');
+  ok(GVS.fit3D({f:272,cx:160,cy:90,theta:0.3,C:[0,-2,1]},{length:3},{})===null,'few obs');
+});
+
 let p=0,f=0;
 for(const r of results){
   if(r.ok){p++;console.log('  PASS '+r.id+' — '+r.name);}
