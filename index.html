@@ -279,6 +279,7 @@ input[type=file]{display:none}
   <button id="arGear" class="ar-gear"><svg class="icn" viewBox="0 0 24 24"><use href="#i-gear"/></svg></button>
   <div id="arSettings" class="ar-glass">
     <div class="t">SETTINGS</div>
+    <div class="sec"><div class="sl">BALL LOCK</div><div class="opts" id="setAuto"></div><div style="font-size:9px;color:#7d9a8b;font-family:Menlo,monospace;margin-top:4px;letter-spacing:.3px">AUTO = قفل خودکار با ثبات چندفریمی · TAP = فقط با لمس — تاچ همیشه کمک/override است</div></div>
     <div class="sec"><div class="sl">DISTANCE UNIT</div><div class="opts" id="setDist"></div></div>
     <div class="sec"><div class="sl">HEIGHT UNIT</div><div class="opts" id="setHeight"></div></div>
     <div class="sec"><div class="sl">BALL SPEED UNIT</div><div class="opts" id="setSpeed"></div></div>
@@ -314,6 +315,7 @@ if(!window.GVS)console.error('GVS: math-core.js not loaded');
 const gvsAssociate=window.GVS?window.GVS.associate:function(){return null;};
 const gvsLiveFit=window.GVS?window.GVS.liveFit:function(){return null;};
 const gvsPredictArc=window.GVS?window.GVS.predictArc:function(){return null;};
+const gvsAutoLock=window.GVS?window.GVS.autoLockStep:function(){return{st:null,locked:false};};
 const AW=320,AH=180;let SCX=cv.width/AW,SCY=cv.height/AH;
 function fitCanvas(){
   const w=Math.max(1,window.innerWidth),h=Math.max(1,window.innerHeight);
@@ -357,9 +359,10 @@ let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=f
 const ballDet={lastR:0};
 let kf=null,trackMatched=0,trackTotal=0,predPts=null;
 let detCands=[],liveArc=null; /* v30: لیست کاندیدای تمام‌کادر + قوس پیش‌بینی زنده */
+let stTrack=null,lastLockR=0,autoCooldownUntil=0,autoToastDone=false;const AUTO_LOCK_FRAMES=10; /* v31: auto-lock */
 /* تنظیمات کاربر — واحدها و رنگ‌ها (ذخیره‌ی دائمی) */
 const SET=(function(){
-  const def={dist:'yd',height:'m',speed:'kmh',tracer:'#ff4d00',label:'#ffd166',xcal:1}; /* پیش‌فرض: مسافت یارد، ارتفاع متر */
+  const def={dist:'yd',height:'m',speed:'kmh',tracer:'#ff4d00',label:'#ffd166',xcal:1,auto:'auto'}; /* پیش‌فرض: مسافت یارد، ارتفاع متر */
   try{return Object.assign(def,JSON.parse(localStorage.getItem('golftar_set2')||'{}'));}catch(e){return def;}
 })();
 function saveSet(){try{localStorage.setItem('golftar_set2',JSON.stringify(SET));}catch(e){}}
@@ -520,7 +523,7 @@ function stopAll(){
   vid.srcObject=null;demo=null;mode='none';
   try{if(stickyTimer){clearTimeout(stickyTimer);stickyTimer=null;}}catch(e){}
   sticky=null;
-  ball=null;prevGray=null;prevCand=null;ballStable=0;trail=[];clubSeen=false;clubBox=null;detCands=[];liveArc=null;
+  ball=null;prevGray=null;prevCand=null;ballStable=0;trail=[];clubSeen=false;clubBox=null;detCands=[];liveArc=null;stTrack=null;autoCooldownUntil=0;
   $('arStBall').className='ar-chipic';$('arStClub').className='ar-chipic';
   $('arShutter').classList.remove('rec','done');
   if(endTimer){clearTimeout(endTimer);endTimer=null;}
@@ -574,7 +577,7 @@ function stickyRelock(){
         const x=clampN(bx+dx,0,AW-1),y=clampN(by+dy,0,AH-1);
         if(lastGray[y*AW+x]>bl-0.28)cnt++;
       }
-      const r=clampN(Math.sqrt(cnt/Math.PI),2,60);
+      const r=clampN(Math.sqrt(cnt/Math.PI),2,60);lastLockR=r;stTrack=null;
       pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
       ball={x:bx,y:by,d:r*2,r:r};
       seedCol=sampleColor(bx,by,Math.max(2,r*0.9));
@@ -596,7 +599,7 @@ function resetShot(){
   }catch(e){}
   ball=null;prevCand=null;ballStable=0;trail=[];prevGray=null;vel={x:0,y:0};
   outN=0;lowRun=0;detectMiss=0;lowThr=false;clubSeen=false;clubBox=null;impactCnt=0;
-  detCands=[];liveArc=null;
+  detCands=[];liveArc=null;stTrack=null;autoCooldownUntil=performance.now()+1200;
   setPhase('detect');
 }
 let wakeLock=null,camDenied=false;
@@ -771,9 +774,18 @@ function detectStep(gray,data){
   if(prevCand&&Math.hypot(best.x-prevCand.x,best.y-prevCand.y)<tol)ballStable++;
   else ballStable=1;
   prevCand=best;
-  /* قفل فقط با لمس کاربر — قفل فقط با لمس است — تشخیص چندفریمی فقط اعتماد به هینت را بالا می‌برد */
-}
-/* کاندید توپ در پنجره‌ی ۵۰px دور لمس — همان معیارهای detectStep */
+  /* v31: AUTO-LOCK — قفل خودکار با ثبات چندفریمی (تاچ کاربر همیشه override/کمک است) */
+  if(SET.auto==='auto'){
+    if(performance.now()<autoCooldownUntil){
+      stTrack=null;
+    }else{
+      const al=gvsAutoLock(stTrack,best,AUTO_LOCK_FRAMES,lastLockR);
+      stTrack=al.st;
+      if(al.locked)lockBallAt(best.x,best.y,best.r,'auto');
+    }
+  }
+  /* قفل با لمس کاربر همیشه فعال است (override/کمک) — قفل خودکار فقط در حالت AUTO */
+}/* کاندید توپ در پنجره‌ی ۵۰px دور لمس — همان معیارهای detectStep */
 function localBallCandidate(cxp,cyp){
   try{
     const RR=50;
@@ -826,8 +838,10 @@ function localBallCandidate(cxp,cyp){
   }catch(e){return null;}
 }
 /* قفل توپ در نقطه‌ی داده‌شده — منطق مشترک لمس/چسبان */
-function lockBallAt(lx,ly,lr){
+function lockBallAt(lx,ly,lr,src){
   const r=clampN(lr,2,60);
+  lastLockR=r;stTrack=null;
+  if(src==='auto'&&!autoToastDone){autoToastDone=true;toast('قفل خودکار فعال ✓ — هر وقت خواستی با تاچ کمک کن',2600);}
   pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
   if(stickyTimer){clearTimeout(stickyTimer);stickyTimer=null;}
   sticky=null;
@@ -1434,6 +1448,7 @@ function colRow(el,cands,cur,cb){
 }
 function syncSettingsUI(){
   optRow($('setDist'),Object.keys(DISTS).map(k=>({v:k,n:DISTS[k].n})),SET.dist,v=>SET.dist=v);
+  optRow($('setAuto'),[{v:'auto',n:'AUTO'},{v:'tap',n:'TAP'}],SET.auto||'auto',v=>SET.auto=v);
   optRow($('setHeight'),Object.keys(HEIGHTS).map(k=>({v:k,n:HEIGHTS[k].n})),SET.height,v=>SET.height=v);
   optRow($('setSpeed'),Object.keys(SPEEDS).map(k=>({v:k,n:SPEEDS[k].n})),SET.speed||'kmh',v=>SET.speed=v);
   colRow($('setTCol'),LCAND,SET.tracer,v=>{SET.tracer=v;tracerCol=v;});
@@ -1461,6 +1476,15 @@ function drawHud(){
     });
     ctx.fillStyle='#ffd166';
     ctx.beginPath();ctx.arc(X,Y,2.5+p*2,0,7);ctx.fill();
+  }
+  /* v31: حلقه‌ی پیشرفت قفل خودکار (AUTO-LOCK) */
+  if(phase==='detect'&&stTrack&&stTrack.frames>1&&SET.auto==='auto'){
+    const pa=clampN(stTrack.frames/AUTO_LOCK_FRAMES,0,1);
+    const Xa=stTrack.x*SCX,Ya=stTrack.y*SCY;
+    ctx.strokeStyle='rgba(255,209,102,.9)';ctx.lineWidth=3;ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.arc(Xa,Ya,14,-Math.PI/2,-Math.PI/2+2*Math.PI*pa);
+    ctx.stroke();
   }
   if(ball&&phase==='armed'){
     const X=ball.x*SCX,Y=ball.y*SCY,s=18;
@@ -1569,7 +1593,8 @@ function updPanels(dt){
     calibEl.style.display='block';
     calibEl.classList.add('mini');
     const lightOk=lastLumaAvg>0.03&&lastLumaAvg<0.985;
-    calibEl.innerHTML=lightOk?'TAP ON THE BALL':'LOW LIGHT — TAP ON BALL';
+    const autoOn=SET.auto==='auto';
+    calibEl.innerHTML=lightOk?(autoOn?'AUTO-LOCK · TAP TO ASSIST':'TAP ON THE BALL'):(autoOn?'LOW LIGHT · AUTO-LOCK':'LOW LIGHT — TAP ON BALL');
   }else if(phase==='armed'){
     calibEl.style.display='block';
     calibEl.innerHTML='PRESS ● TO RECORD';

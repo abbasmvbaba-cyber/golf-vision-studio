@@ -175,7 +175,23 @@ function predictArc(x0px,y0px,vxM,vyMup,ppm,xm){
   return{pts:pts,carryM:sim.carry,land:land,t:sim.t};
 }
 
+
+/* ---------- v31: auto-lock stability (state machine خالص) ----------
+   cand: {x,y,r} | null (این فریم کاندیدا نبود)
+   sizeRef: شعاع توپِ قفل‌شده‌ی قبل (نگهبان اندازه) | 0
+   نتیجه: {st, locked} — در لحظه‌ی قفل st=null برمی‌گردد */
+function autoLockStep(st,cand,minFrames,sizeRef){
+  if(!cand)return{st:null,locked:false};
+  if(st&&Math.hypot(cand.x-st.x,cand.y-st.y)<Math.max(4,cand.r*0.6)&&Math.abs(cand.r-st.r)<st.r*0.5){
+    st={x:st.x*0.6+cand.x*0.4,y:st.y*0.6+cand.y*0.4,r:cand.r,frames:st.frames+1};
+  }else{
+    st={x:cand.x,y:cand.y,r:cand.r,frames:1};
+  }
+  const locked=st.frames>=minFrames&&(!sizeRef||Math.abs(cand.r-sizeRef)<Math.max(2,sizeRef*0.5));
+  return{st:locked?null:st,locked:locked};
+}
+
 return {PHYS:PHYS,YD:YD,MPH:MPH,simCarry:simCarry,det3:det3,quadFit:quadFit,
   makeKF:makeKF,kfPredict:kfPredict,kfUpdate:kfUpdate,
-  associate:associate,ballisticStep:ballisticStep,liveFit:liveFit,predictArc:predictArc};
+  associate:associate,ballisticStep:ballisticStep,liveFit:liveFit,predictArc:predictArc,autoLockStep:autoLockStep};
 });

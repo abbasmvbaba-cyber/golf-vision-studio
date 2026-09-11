@@ -166,14 +166,65 @@ T('T11','predictArc landing and remaining carry',function(){
 /* T12 — خروجی‌های UMD */
 T('T12','UMD exports complete',function(){
   ['PHYS','YD','MPH','simCarry','det3','quadFit','makeKF','kfPredict','kfUpdate',
-   'associate','ballisticStep','liveFit','predictArc'].forEach(function(k){
+   'associate','ballisticStep','liveFit','predictArc','autoLockStep'].forEach(function(k){
     ok(typeof GVS[k]!=='undefined','missing export '+k);
   });
   ['simCarry','det3','quadFit','makeKF','kfPredict','kfUpdate',
-   'associate','ballisticStep','liveFit','predictArc'].forEach(function(k){
+   'associate','ballisticStep','liveFit','predictArc','autoLockStep'].forEach(function(k){
     ok(typeof GVS[k]==='function','not a function: '+k);
   });
   near(GVS.PHYS.k,0.004583,0.0002,'PHYS.k');
+});
+
+
+/* T13 — autoLockStep: قفل بعد از ۱۰ فریم پایدار */
+T('T13','autoLockStep locks after stable frames',function(){
+  let st=null,locked=false;
+  for(let i=0;i<9;i++){const r=GVS.autoLockStep(st,{x:100,y:100,r:4},10);st=r.st;locked=r.locked;}
+  ok(!locked,'locked too early');
+  ok(st&&st.frames===9,'frames='+st.frames);
+  const r2=GVS.autoLockStep(st,{x:100.5,y:99.8,r:4},10);
+  ok(r2.locked,'should lock on frame 10');
+  ok(r2.st===null,'st cleared on lock');
+});
+
+/* T14 — autoLockStep: پرش موقعیت → شروع از نو */
+T('T14','autoLockStep resets on position jump',function(){
+  let st=null,locked=false;
+  for(let i=0;i<7;i++){const r=GVS.autoLockStep(st,{x:100,y:100,r:4},10);st=r.st;locked=r.locked;}
+  ok(!locked);
+  const rj=GVS.autoLockStep(st,{x:130,y:100,r:4},10);
+  ok(!rj.locked&&rj.st&&rj.st.frames===1,'should reset on 30px jump');
+  let s2=rj.st,lockAt=-1;
+  for(let i=0;i<9;i++){
+    const r=GVS.autoLockStep(s2,{x:130,y:100,r:4},10);
+    s2=r.st;
+    if(r.locked&&lockAt<0)lockAt=i+1;
+  }
+  ok(lockAt===9,'lock on 9th stable frame after jump, got '+lockAt);
+  ok(s2===null,'st cleared on lock');
+});
+
+/* T15 — autoLockStep: نگهبان اندازه (توپِ قفل‌شده قبل r=4) */
+T('T15','autoLockStep size guard rejects different size',function(){
+  let st=null,locked=false;
+  for(let i=0;i<15;i++){const r=GVS.autoLockStep(st,{x:50,y:50,r:8},10,4);st=r.st;locked=r.locked;}
+  ok(!locked,'should never lock r=8 when last ball was r=4');
+  const r2=GVS.autoLockStep(null,{x:50,y:50,r:4.2},10,4);
+  ok(!r2.locked,'needs stable frames');
+});
+
+/* T16 — autoLockStep: فریم خالی → شروع از نو */
+T('T16','autoLockStep null frame resets',function(){
+  let st=null,locked=false;
+  for(let i=0;i<5;i++){const r=GVS.autoLockStep(st,{x:20,y:20,r:4});st=r.st;locked=r.locked;}
+  const rn=GVS.autoLockStep(st,null,10,0);
+  ok(!rn.locked&&rn.st===null,'null frame clears state');
+  let s2=null,lk=false;
+  for(let i=0;i<9;i++){const r=GVS.autoLockStep(s2,{x:20,y:20,r:4},10,0);s2=r.st;lk=r.locked;}
+  ok(!lk,'recount from zero');
+  const r2=GVS.autoLockStep(s2,{x:20,y:20,r:4},10,0);
+  ok(r2.locked,'lock on 10th stable frame after gap');
 });
 
 let p=0,f=0;
