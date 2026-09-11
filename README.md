@@ -93,3 +93,20 @@ index.html   ← کل اپ (HTML + CSS + JS در یک فایل)
 ## 📄 مجوز
 
 MIT — آزاد برای استفاده، تغییر و انتشار.
+
+---
+
+## 🛰 v30 — معماری ردیابی (چرخه‌ی کلاسیک tracking)
+
+بر اساس چرخه‌ی استاندارد: **detection → data association → Kalman → ballistic prediction**
+
+| بلاک چرخه | پیاده‌سازی v30 |
+|---|---|
+| Target detection | `scanBallCands()` — لیست top-10 کاندیدای تمام‌کادر (قبلاً فقط یک argmax بود) |
+| Data association | `GVS.associate()` — فاصله‌ی Mahalanobis با ماتریس P کالمن + دروازه‌ی χ² (99%)؛ مسیر پیکسلی قدیمی به‌عنوان fallback ماند (صفر regression) |
+| State prediction / Update | همان کالمن ۶حالته (تغییر نکرده) + **motion model بالستیک**: وقتی کالیبراسیون گرانش معتبر است، گرانش + درگ به شتاب کالمن تزریق می‌شود |
+| Reacquire | از لیست کاندیدای تمام‌کادر با دروازه‌ی شل‌شونده + حلقه‌ی annulus قدیمی به‌عنوان fallback |
+| Ballistic prediction | `GVS.liveFit()` + `GVS.predictArc()` — از ۶ مشاهده‌ی اول، **هر فریم** قوس خط‌چین + نقطه‌ی فرود + عدد PRED رسم می‌شود و **بعد از گم‌شدن توپ ادامه دارد** (coast mode) |
+
+- **math-core.js** — ریاضی خالص (PHYS، simCarry، quadFit، کالمن، associate، liveFit، predictArc، ballisticStep) با خروجی UMD (مرورگر + Node). بخش ریاضی mirror از index.html است؛ تست T0 تضمین می‌کند دو جا با هم انحراف نگیرند.
+- **تست‌ها:** `node test/harness.js` — ۱۳ تست بدون وابستگی (فیزیک، کالمن، association، مدل بالستیک، liveFit، predictArc، mirror sync) + CI روی push/PR.
