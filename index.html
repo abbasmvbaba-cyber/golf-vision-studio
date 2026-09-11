@@ -317,16 +317,28 @@ const gvsAssociate=window.GVS?window.GVS.associate:function(){return null;};
 const gvsLiveFit=window.GVS?window.GVS.liveFit:function(){return null;};
 const gvsPredictArc=window.GVS?window.GVS.predictArc:function(){return null;};
 const gvsAutoLock=window.GVS?window.GVS.autoLockStep:function(){return{st:null,locked:false};};
-const AW=320,AH=180;let SCX=cv.width/AW,SCY=cv.height/AH;
+const gvsAutoLockMulti=window.GVS?window.GVS.autoLockMulti:function(){return{sts:[],locked:null,lead:null};};
+let AW=320,AH=180,SCX=1,SCY=1,prevGray=null;
+const anA=document.createElement('canvas');
+const ax=anA.getContext('2d',{willReadFrequently:true});
+/* v34: شبکه‌ی تشخیص هم‌نسبت با aspect بوم (مقیاس ایزوتروپ) —
+   قبلاً هر بوم (حتی portrait) به 320×180 کچل می‌شد و توپ به بیضی کِش‌دار (~×۳.۸)
+   تبدیل می‌شد؛ فیلترهای شکل (asp/dcirc) آن را در هر فاصله‌ای رد می‌کردند.
+   AH از aspect بوم می‌آید تا SCX≈SCY بماند؛ حالت 16:9 دقیقاً 320×180 قبلی است. */
+function layoutDetect(){
+  const w=Math.max(1,cv.width),h=Math.max(1,cv.height);
+  AH=Math.min(768,Math.max(96,Math.round(AW*h/w)));
+  if(anA.width!==AW||anA.height!==AH){anA.width=AW;anA.height=AH;}
+  SCX=cv.width/AW;SCY=cv.height/AH;
+  prevGray=null;
+}
 function fitCanvas(){
   const w=Math.max(1,window.innerWidth),h=Math.max(1,window.innerHeight);
   const k=clampN(Math.min(2,Math.max(0.5,1080/Math.max(w,h))),0.4,2);
   cv.width=Math.round(w*k);cv.height=Math.round(h*k);
-  SCX=cv.width/AW;SCY=cv.height/AH;
+  layoutDetect();
 }
 window.addEventListener('resize',fitCanvas);fitCanvas();
-const anA=document.createElement('canvas');anA.width=AW;anA.height=AH;
-const ax=anA.getContext('2d',{willReadFrequently:true});
 const vid=$('arVideo');
 /* واترمارک برند — روی تمام ویدیوها و فریم‌ها */
 const wmImg=new Image();let wmOk=false;
@@ -354,13 +366,13 @@ let mode='none',stream=null,facing='environment';
 let demo=null,demoT=0;
 let phase='off'; /* off | detect | armed | track | done */
 let ball=null,ballStable=0,prevCand=null,pxPerMeter=80;
-let prevGray=null,clubSeen=false,clubBox=null;
+let clubSeen=false,clubBox=null;
 let vel={x:0,y:0},lostN=0,tImpact=0,trail=[],seedCol=[245,245,245];
 let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=false,lastGray=null,lastData=null;
 const ballDet={lastR:0};
 let kf=null,trackMatched=0,trackTotal=0,predPts=null;
 let detCands=[],liveArc=null; /* v30: لیست کاندیدای تمام‌کادر + قوس پیش‌بینی زنده */
-let stTrack=null,lastLockR=0,autoCooldownUntil=0,autoToastDone=false;const AUTO_LOCK_FRAMES=10; /* v31: auto-lock */
+let stTracks=[],lastLockR=0,autoCooldownUntil=0,autoToastDone=false;const AUTO_LOCK_FRAMES=10; /* v31: auto-lock · v34: stTracks = چندفرضیه‌ای */
 let tapHint=null,calib3D=null,fit3Dlive=null,tHit3D=null;const TAP_HINT_R=56,TAP_HINT_MS=4000,AUTO_LOCK_FRAMES_HINT=3; /* v32/v33: hint ناحیه + مدل ۳بعدی */
 /* تنظیمات کاربر — واحدها و رنگ‌ها (ذخیره‌ی دائمی) */
 const SET=(function(){
@@ -525,7 +537,7 @@ function stopAll(){
   vid.srcObject=null;demo=null;mode='none';
   try{if(stickyTimer){clearTimeout(stickyTimer);stickyTimer=null;}}catch(e){}
   sticky=null;
-  ball=null;prevGray=null;prevCand=null;ballStable=0;trail=[];clubSeen=false;clubBox=null;detCands=[];liveArc=null;stTrack=null;autoCooldownUntil=0;tapHint=null;calib3D=null;fit3Dlive=null;tHit3D=null;
+  ball=null;prevGray=null;prevCand=null;ballStable=0;trail=[];clubSeen=false;clubBox=null;detCands=[];liveArc=null;stTracks=[];autoCooldownUntil=0;tapHint=null;calib3D=null;fit3Dlive=null;tHit3D=null;
   $('arStBall').className='ar-chipic';$('arStClub').className='ar-chipic';
   $('arShutter').classList.remove('rec','done');
   if(endTimer){clearTimeout(endTimer);endTimer=null;}
@@ -579,7 +591,7 @@ function stickyRelock(){
         const x=clampN(bx+dx,0,AW-1),y=clampN(by+dy,0,AH-1);
         if(lastGray[y*AW+x]>bl-0.28)cnt++;
       }
-      const r=clampN(Math.sqrt(cnt/Math.PI),2,60);lastLockR=r;stTrack=null;fit3Dlive=null;tHit3D=null;calib3D=tryCalib3D(bx,by,r);
+      const r=clampN(Math.sqrt(cnt/Math.PI),2,60);lastLockR=r;stTracks=[];fit3Dlive=null;tHit3D=null;calib3D=tryCalib3D(bx,by,r);
       pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
       ball={x:bx,y:by,d:r*2,r:r};
       seedCol=sampleColor(bx,by,Math.max(2,r*0.9));
@@ -601,7 +613,7 @@ function resetShot(){
   }catch(e){}
   ball=null;prevCand=null;ballStable=0;trail=[];prevGray=null;vel={x:0,y:0};
   outN=0;lowRun=0;detectMiss=0;lowThr=false;clubSeen=false;clubBox=null;impactCnt=0;
-  detCands=[];liveArc=null;stTrack=null;autoCooldownUntil=performance.now()+1200;tapHint=null;calib3D=null;fit3Dlive=null;tHit3D=null;
+  detCands=[];liveArc=null;stTracks=[];autoCooldownUntil=performance.now()+1200;tapHint=null;calib3D=null;fit3Dlive=null;tHit3D=null;
   setPhase('detect');
 }
 let wakeLock=null,camDenied=false;
@@ -729,7 +741,7 @@ function scanBallCands(gray,data,maxOut){
     if(cnt<8)continue;
     const cx=sx/cnt,cy=sy/cnt;
     const r=Math.sqrt(cnt/Math.PI);
-    if(r<1.6||r>30)continue;
+    if(r<1.6||r>45)continue; /* v34: سقف ۴۵ — توپِ نزدیک (۲۰-۵۰سانتی)؛ حلقه/گردی/پرشدگی همچنان محافظ هستند */
     const bw=maxx-minx+1,bh=maxy-miny+1;
     const asp=bw>bh?bw/bh:bh/bw;
     if(asp>2.2)continue;
@@ -750,7 +762,9 @@ function scanBallCands(gray,data,maxOut){
     const dcirc=(Math.min(bw,bh)/2)/r;
     if(dcirc<0.62||dcirc>1.45)continue;
     /* PATCH 43: بایاس زمین — توپ ایستاده پایین کادر است؛ سفیدیِ تنِ بازیکن (پیراهن/کیف) بر آن نمی‌برد */
-    const score=mean+diff*2.5+(1-Math.abs(dcirc-1))*0.5+(cy/AH)*0.55;
+    /* v34: بونوس اندازه — توپِ واقعی بلابِ بزرگ و پرشمار است؛ نویزِ روشنِ لبه‌ای (تلویزیون/بوق) ریز */
+    const sizeB=0.4*Math.min(1,Math.max(0,(r-4)/8));
+    const score=mean+diff*2.5+(1-Math.abs(dcirc-1))*0.5+(cy/AH)*0.55+sizeB;
     out.push({x:cx,y:cy,r,score});
     if(out.length>=32)break;
   }
@@ -787,7 +801,7 @@ function scanHintCands(gray,data,cx,cy){
     const bxh=sx/cnt,byh=sy/cnt;
     if(Math.hypot(bxh-cx,byh-cy)>TAP_HINT_R)continue;
     const r=Math.sqrt(cnt/Math.PI);
-    if(r<1.4||r>30)continue;
+    if(r<1.4||r>45)continue; /* v34: توپِ نزدیک */
     const bw=maxx-minx+1,bh=maxy-miny+1;
     const asp=bw>bh?bw/bh:bh/bw;
     if(asp>2.4)continue;
@@ -806,7 +820,8 @@ function scanHintCands(gray,data,cx,cy){
     if(!isFinite(diff)||diff<0.03)continue;
     const dcirc=(Math.min(bw,bh)/2)/r;
     if(dcirc<0.6||dcirc>1.5)continue;
-    const score=mean+diff*2.5+(1-Math.abs(dcirc-1))*0.5+(byh/AH)*0.55;
+    const sizeB=0.4*Math.min(1,Math.max(0,(r-4)/8)); /* v34 */
+    const score=mean+diff*2.5+(1-Math.abs(dcirc-1))*0.5+(byh/AH)*0.55+sizeB;
     out.push({x:bxh,y:byh,r:r,score:score,hint:true});
     if(out.length>=16)break;
   }
@@ -843,15 +858,17 @@ function detectStep(gray,data){
   if(prevCand&&Math.hypot(best.x-prevCand.x,best.y-prevCand.y)<tol)ballStable++;
   else ballStable=1;
   prevCand=best;
-  /* v31: AUTO-LOCK — قفل خودکار با ثبات چندفریمی (تاچ کاربر همیشه override/کمک است) */
+  /* v31: AUTO-LOCK — قفل خودکار با ثبات چندفریمی (تاچ کاربر همیشه override/کمک است)
+     v34: چندفرضیه‌ای — هر کاندیدا ثبات خودش را می‌شمارد؛ نویزِ روشنِ پایدار (مثلاً لبه‌ی تلویزیون)
+     دیگر نمی‌تواند قفل را از توپ بدزدد. کاندیدای کوچک (r<8) دو برابر فریم می‌خواهد. */
   if(SET.auto==='auto'){
     if(performance.now()<autoCooldownUntil){
-      stTrack=null;
+      stTracks=[];
     }else{
-      const inHint=!!(tapHint&&performance.now()<tapHint.until&&Math.hypot(best.x-tapHint.x,best.y-tapHint.y)<=TAP_HINT_R);
-      const al=gvsAutoLock(stTrack,best,inHint?AUTO_LOCK_FRAMES_HINT:AUTO_LOCK_FRAMES,inHint?0:lastLockR);
-      stTrack=al.st;
-      if(al.locked)lockBallAt(best.x,best.y,best.r,'auto');
+      const hint=(tapHint&&performance.now()<tapHint.until)?{x:tapHint.x,y:tapHint.y,r:TAP_HINT_R,f:AUTO_LOCK_FRAMES_HINT}:null;
+      const al=gvsAutoLockMulti(stTracks,detCands,AUTO_LOCK_FRAMES,AUTO_LOCK_FRAMES*2,hint,hint?0:lastLockR);
+      stTracks=al.sts;
+      if(al.locked)lockBallAt(al.locked.x,al.locked.y,al.locked.r,'auto');
     }
   }
   /* قفل با لمس کاربر همیشه فعال است (override/کمک) — قفل خودکار فقط در حالت AUTO */
@@ -882,7 +899,7 @@ function localBallCandidate(cxp,cyp){
       if(cnt<8)continue;
       const cx=sx/cnt,cy=sy/cnt;
       const r=Math.sqrt(cnt/Math.PI);
-      if(r<1.6||r>30)continue;              /* سند: مساحت ۲۵-۲۵۰۰px² */
+      if(r<1.6||r>45)continue;              /* سند: مساحت ۲۵-۶۳۶۲px² (v34: توپِ نزدیک) */
       const bw=maxx-minx+1,bh=maxy-miny+1;
       const asp=bw>bh?bw/bh:bh/bw;
       if(asp>2.2)continue;
@@ -922,7 +939,7 @@ function tryCalib3D(uA,vA,rA){
     const fA=fV*s*kx,fyA=fV*s*ky;
     const cxA=(vw/2-offx)*s*kx,cyA=(vh/2-offy)*s*ky;
     if(Math.abs(uA-cxA)>0.16*AW||Math.abs(vA-cyA)>0.22*AH)return null;
-    if(!(rA>=1.5&&rA<=16))return null;
+    if(!(rA>=1.5&&rA<=45))return null; /* v34: توپِ نزدیک — calibBallPose تا r=60 معتبر است */
     const res=GVS.calibBallPose(fA,fyA,cxA,cyA,uA,vA,rA);
     if(!res)return null;
     res.C=[0,-res.d,res.h];
@@ -931,7 +948,7 @@ function tryCalib3D(uA,vA,rA){
 }
 function lockBallAt(lx,ly,lr,src){
   const r=clampN(lr,2,60);
-  lastLockR=r;stTrack=null;tapHint=null;calib3D=null;fit3Dlive=null;tHit3D=null;
+  lastLockR=r;stTracks=[];tapHint=null;calib3D=null;fit3Dlive=null;tHit3D=null;
   calib3D=tryCalib3D(lx,ly,r);
   if(src==='auto'&&!autoToastDone){autoToastDone=true;toast(calib3D?'قفل خودکار ✓ + کالیبراسیون ۳بعدی ✓ — برای کمک، روی ناحیه‌ی توپ بزن':'قفل خودکار ✓ — برای کمک، روی ناحیه‌ی توپ بزن',2800);}
   pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
@@ -1601,10 +1618,18 @@ function drawHud(){
     ctx.fillStyle='#ffd166';
     ctx.beginPath();ctx.arc(X,Y,2.5+p*2,0,7);ctx.fill();
   }
-  /* v31: حلقه‌ی پیشرفت قفل خودکار (AUTO-LOCK) */
-  if(phase==='detect'&&stTrack&&stTrack.frames>1&&SET.auto==='auto'){
-    const pa=clampN(stTrack.frames/AUTO_LOCK_FRAMES,0,1);
-    const Xa=stTrack.x*SCX,Ya=stTrack.y*SCY;
+  /* v31: حلقه‌ی پیشرفت قفل خودکار (AUTO-LOCK) — v34: بر اساس پیشروترین فرضیه */
+  let _lead=null,_lp=0;
+  if(phase==='detect'&&stTracks.length&&SET.auto==='auto'){
+    for(let _i=0;_i<stTracks.length;_i++){
+      const _st=stTracks[_i],_p=_st.frames/_st.min;
+      if(_p>_lp||(_p===_lp&&(!_lead||_st.r>_lead.r))){_lead=_st;_lp=_p;}
+    }
+    if(!_lead||_lead.frames<2)_lead=null;
+  }
+  if(_lead){
+    const pa=clampN(_lp,0,1);
+    const Xa=_lead.x*SCX,Ya=_lead.y*SCY;
     ctx.strokeStyle='rgba(255,209,102,.9)';ctx.lineWidth=3;ctx.lineCap='round';
     ctx.beginPath();
     ctx.arc(Xa,Ya,14,-Math.PI/2,-Math.PI/2+2*Math.PI*pa);

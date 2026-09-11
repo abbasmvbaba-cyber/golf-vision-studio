@@ -191,6 +191,64 @@ function autoLockStep(st,cand,minFrames,sizeRef){
   return{st:locked?null:st,locked:locked};
 }
 
+/* ---------- v34: AUTO-LOCK چندفرضیه‌ای (multi-hypothesis) ----------
+   sts: حالت‌های ثبات [{x,y,r,frames,min,misses}] — هر کاندیدا حالت خودش را نگه می‌دارد
+   cands: کاندیداهای این فریم (مرتب‌شده بر اساس score)
+   minF: frame لازم برای کاندیدای «بزرگ» (r>=8) · smallF: برای «کوچک» (r<8) —
+         بلابِ کوچک ممکن است نویزِ روشن باشد؛ مدرکِ بیشتری می‌خواهد
+   hint: {x,y,r,f} — ناحیه‌ی تاچ: کاندیدای داخل آن منطقه min=f می‌گیرد (سریع)
+   sizeRef: شعاع توپِ قفل‌شده‌ی قبلی — قفل روی اندازه‌ی خیلی متفاوت ممنوع
+   برگشت: {sts, locked:{x,y,r}|null, lead:{x,y,r,frames,min}|null}
+   ترتیب ساختِ فرضیه: کاندیداهای بزرگ اول (به‌ترتیب score)، بعدِ کوچک — حداکثر ۴.
+   دلیل: اگر یک نقطه‌ی روشنِ پایدار (مثل لبه‌ی تلویزیون) score بالاتری از توپ داشته
+   باشد، قفل دیگر نمی‌تواند دزدیده شود؛ هر فرضیه جداگانه ثبات خودش را می‌شمارد. */
+function autoLockMulti(sts,cands,minF,smallF,hint,sizeRef){
+  const sizeOk=function(r){return !sizeRef||Math.abs(r-sizeRef)<Math.max(2,sizeRef*0.5);};
+  const out=[];
+  const used=new Array(cands.length).fill(false);
+  for(let i=0;i<sts.length;i++){
+    const st=sts[i];
+    let best=-1,bestD=1e9;
+    for(let j=0;j<cands.length;j++){
+      if(used[j])continue;
+      const c=cands[j];
+      const d=Math.hypot(c.x-st.x,c.y-st.y);
+      if(d<Math.max(4,c.r*0.6)&&Math.abs(c.r-st.r)<st.r*0.5&&d<bestD){bestD=d;best=j;}
+    }
+    if(best>=0){
+      used[best]=true;
+      const c=cands[best];
+      out.push({x:st.x*0.6+c.x*0.4,y:st.y*0.6+c.y*0.4,r:c.r,frames:st.frames+1,min:st.min,misses:0});
+    }else if((st.misses||0)<2){
+      out.push({x:st.x,y:st.y,r:st.r,frames:st.frames,min:st.min,misses:(st.misses||0)+1});
+    }
+  }
+  for(let pass=0;pass<2&&out.length<4;pass++){
+    for(let j=0;j<cands.length&&out.length<4;j++){
+      if(used[j])continue;
+      const c=cands[j];
+      const small=c.r<8;
+      if((pass===0&&small)||(pass===1&&!small))continue;
+      const hintOk=hint&&Math.hypot(c.x-hint.x,c.y-hint.y)<=hint.r;
+      out.push({x:c.x,y:c.y,r:c.r,frames:1,min:hintOk?hint.f:(small?smallF:minF),misses:0});
+      used[j]=true;
+    }
+  }
+  let locked=null;
+  for(let i=0;i<out.length;i++){
+    const st=out[i];
+    if(st.frames>=st.min&&sizeOk(st.r)){
+      if(!locked||st.r>locked.r)locked={x:st.x,y:st.y,r:st.r};
+    }
+  }
+  let lead=null,leadP=-1;
+  for(let i=0;i<out.length;i++){
+    const pr=out[i].frames/out[i].min;
+    if(pr>leadP|| (pr===leadP&&(!lead||out[i].r>lead.r))){lead=out[i];leadP=pr;}
+  }
+  return{sts:out,locked:locked,lead:lead?{x:lead.x,y:lead.y,r:lead.r,frames:lead.frames,min:lead.min}:null};
+}
+
 
 /* ================= v33: مدل ۳بعدی (کالیبراسیون + فیت بالستیک) =================
    مختصات جهان: مبدأ = نقطه‌ی تماس توپ با زمین؛ x=راست، y=سوی هدف، z=بالا.
@@ -431,5 +489,5 @@ function findImpactTime(obs){
 
 return {PHYS:PHYS,YD:YD,MPH:MPH,simCarry:simCarry,det3:det3,quadFit:quadFit,
   makeKF:makeKF,kfPredict:kfPredict,kfUpdate:kfUpdate,
-  associate:associate,ballisticStep:ballisticStep,liveFit:liveFit,predictArc:predictArc,autoLockStep:autoLockStep,project:project,calibBallPose:calibBallPose,simCarry3D:simCarry3D,fit3D:fit3D,findImpactTime:findImpactTime};
+  associate:associate,ballisticStep:ballisticStep,liveFit:liveFit,predictArc:predictArc,autoLockStep:autoLockStep,autoLockMulti:autoLockMulti,project:project,calibBallPose:calibBallPose,simCarry3D:simCarry3D,fit3D:fit3D,findImpactTime:findImpactTime};
 });

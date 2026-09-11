@@ -284,6 +284,116 @@ T('T21','calibBallPose invalid inputs',function(){
   ok(GVS.fit3D({f:272,cx:160,cy:90,theta:0.3,C:[0,-2,1]},{length:3},{})===null,'few obs');
 });
 
+/* ---------- v34: helpers برای استخراج تابع از index.html ---------- */
+const indexHtml=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
+function exFn(name){
+  const m=new RegExp('function '+name+'\\s*\\(','g').exec(indexHtml);
+  if(!m)throw new Error('function not found in index.html: '+name);
+  let i=indexHtml.indexOf('{',m.index),d=0,j=i;
+  for(;j<indexHtml.length;j++){if(indexHtml[j]==='{')d++;else if(indexHtml[j]==='}'){d--;if(d===0)break;}}
+  return indexHtml.slice(m.index,j+1);
+}
+
+/* T22 — autoLockMulti: توپِ پایدار روی نویزِ روشنِ پایدار (score بالاتر) برنده است */
+T('T22','v34 autoLockMulti: stable ball locks over stable bright decoy',function(){
+  let sts=[],locked=null,frame=-1;
+  for(let i=0;i<25;i++){
+    const r=GVS.autoLockMulti(sts,[{x:277,y:14,r:5.7},{x:100,y:520,r:33}],10,20,null,0);
+    sts=r.sts;
+    if(r.locked){locked=r.locked;frame=i+1;break;}
+  }
+  ok(locked,'never locked');
+  ok(frame===10,'ball should lock at frame 10, got '+frame);
+  ok(Math.abs(locked.r-33)<1,'locked wrong object r='+locked.r);
+  ok(Math.hypot(locked.x-100,locked.y-520)<2,'locked wrong position');
+});
+
+/* T23 — autoLockMulti: نویزِ لرزان (جیتر لبه‌ای) قفل نمی‌گیرد؛ توپ می‌گیرد */
+T('T23','v34 autoLockMulti: jittering decoy cannot lock, ball does',function(){
+  let sts=[],locked=null,frame=-1;
+  for(let i=0;i<30;i++){
+    const decoy={x:277+(i%2?6:-6),y:14+(i%2?-5:5),r:5.7*(1+0.15*(i%2?1:-1))};
+    const r=GVS.autoLockMulti(sts,[decoy,{x:100,y:520,r:33}],10,20,null,0);
+    sts=r.sts;
+    if(r.locked){locked=r.locked;frame=i+1;break;}
+  }
+  ok(locked,'never locked');
+  ok(Math.abs(locked.r-33)<1,'locked the jittering decoy!');
+  ok(frame<=12,'ball took too long: frame '+frame);
+});
+
+/* T24 — autoLockMulti: ناحیه‌ی تاچ → قفل سریع ۳فریمی */
+T('T24','v34 autoLockMulti: tap hint fast path (3 frames)',function(){
+  let sts=[],locked=null,frame=-1;
+  for(let i=0;i<5;i++){
+    const r=GVS.autoLockMulti(sts,[{x:150,y:400,r:12}],10,20,{x:150,y:400,r:56,f:3},0);
+    sts=r.sts;
+    if(r.locked){locked=r.locked;frame=i+1;break;}
+  }
+  ok(locked,'hint candidate never locked');
+  ok(frame===3,'should lock on 3rd frame inside hint, got '+frame);
+});
+
+/* T25 — autoLockMulti: نگهبان اندازه — توپِ قبلی r=12، کاندیدای r=40 قفل نشود */
+T('T25','v34 autoLockMulti: size guard blocks wrong-size lock',function(){
+  let sts=[],locked=null;
+  for(let i=0;i<25;i++){
+    const r=GVS.autoLockMulti(sts,[{x:80,y:300,r:40}],10,20,null,12);
+    sts=r.sts;
+    if(r.locked)locked=r.locked;
+  }
+  ok(locked===null,'r=40 must not lock when last ball was r=12');
+});
+
+/* T26 — layoutDetect: شبکه‌ی تشخیص هم‌نسبت با بوم (ایزوتروپ) + رگرسیون 16:9 */
+T('T26','v34 layoutDetect: grid tracks canvas aspect (isotropic)',function(){
+  const src=exFn('layoutDetect');
+  const run=function(cw,ch){
+    const cv={width:cw,height:ch},anA={width:0,height:0};
+    return new Function('cv','anA',
+      'var AW=320,AH=180,SCX=1,SCY=1,prevGray="sentinel";'+src+
+      '\nlayoutDetect();'
+      +'\nreturn{AW:AW,AH:AH,SCX:SCX,SCY:SCY,prevGray:prevGray,anW:anA.width,anH:anA.height};'
+    )(cv,anA);
+  };
+  const land=run(1920,1080);
+  ok(land.AW===320&&land.AH===180,'16:9 must stay 320x180, got '+land.AW+'x'+land.AH);
+  ok(land.SCX===land.SCY,'16:9 isotropic: SCX='+land.SCX+' SCY='+land.SCY);
+  ok(land.prevGray===null,'prevGray reset on relayout');
+  const port=run(780,1688);
+  ok(port.AH>180,'portrait AH must grow: '+port.AH);
+  ok(Math.abs(port.SCX-port.SCY)/port.SCX<0.01,'portrait isotropic: SCX='+port.SCX.toFixed(4)+' SCY='+port.SCY.toFixed(4));
+  ok(port.anW===port.AW&&port.anH===port.AH,'anA canvas resized with grid');
+  const ultra=run(400,1200);
+  ok(ultra.AH<=768,'AH clamped at extreme aspect: '+ultra.AH);
+});
+
+/* T27 — scanBallCands: توپِ نزدیک (r=34) در گرید portrait بر نویز لبه‌ای برتر است */
+T('T27','v34 scanBallCands: close ball beats bright edge noise (portrait)',function(){
+  const satOf=(0,eval)('('+exFn('satOf')+')');
+  const AW=320,AH=670,N=AW*AH;
+  const gray=new Float32Array(N).fill(0.32);
+  const data=new Uint8ClampedArray(N*4).fill(Math.round(0.32*255));
+  const setPx=function(i,l){gray[i]=l;const v=Math.round(l*255);data[i*4]=v;data[i*4+1]=v;data[i*4+2]=v;};
+  const disc=function(cx,cy,r,l){
+    for(let y=Math.max(0,Math.round(cy-r));y<=Math.min(AH-1,Math.round(cy+r));y++)
+      for(let x=Math.max(0,Math.round(cx-r));x<=Math.min(AW-1,Math.round(cx+r));x++)
+        if((x-cx)*(x-cx)+(y-cy)*(y-cy)<=r*r)setPx(y*AW+x,l);
+  };
+  const rect=function(x0,y0,x1,y1,l){
+    for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)setPx(y*AW+x,l);
+  };
+  rect(200,0,319,60,0.12);   /* پنل تلویزیونِ تیره */
+  disc(277,14,5.7,1.0);      /* هایلایتِ سرخوردِ لبه‌ای (نویزِ کلاسیک) */
+  disc(100,520,34,0.96);     /* توپِ نزدیک روی مبل */
+  const scanFn=new Function('AW','AH','lowThr','lastLumaAvg','satOf',exFn('scanBallCands')+'\nreturn scanBallCands;')(AW,AH,false,0.5,satOf);
+  const out=scanFn(gray,data,8);
+  ok(out.length>0,'no candidates at all');
+  const ball=out.find(c=>Math.hypot(c.x-100,c.y-520)<4);
+  ok(ball,'close ball not found: '+out.map(c=>c.x.toFixed(0)+','+c.y.toFixed(0)+'(r'+c.r.toFixed(0)+')').join(' '));
+  ok(out[0]===ball,'ball must be rank #1, top is '+out[0].x.toFixed(0)+','+out[0].y.toFixed(0));
+});
+
 let p=0,f=0;
 for(const r of results){
   if(r.ok){p++;console.log('  PASS '+r.id+' — '+r.name);}
