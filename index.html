@@ -410,7 +410,7 @@ let fileTapFail=null,lastNoBallHintAt=0; /* v35.3: قفل دستی در ویدی
 const ballDet={lastR:0};
 let kf=null,trackMatched=0,trackTotal=0,predPts=null;
 let detCands=[],liveArc=null; /* v30: لیست کاندیدای تمام‌کادر + قوس پیش‌بینی زنده */
-let stTracks=[],lastLockR=0,launchPos=null,autoCooldownUntil=0,autoToastDone=false;const AUTO_LOCK_FRAMES=10; /* v31: auto-lock · v34: stTracks = چندفرضیه‌ای */
+let stTracks=[],lastLockR=0,launchPos=null,reconMode=false,reconFull=null,reconLand=null,autoCooldownUntil=0,autoToastDone=false;const AUTO_LOCK_FRAMES=10; /* v31: auto-lock · v34: stTracks = چندفرضیه‌ای */
 let tapHint=null,calib3D=null,fit3Dlive=null,tHit3D=null;const TAP_HINT_R=56,TAP_HINT_MS=4000,AUTO_LOCK_FRAMES_HINT=3; /* v32/v33: hint ناحیه + مدل ۳بعدی */
 /* تنظیمات کاربر — واحدها و رنگ‌ها (ذخیره‌ی دائمی) */
 const SET=(function(){
@@ -633,7 +633,7 @@ function vidRestart(){
   /* ریست کامل تا پایپ‌لاین از صفر دوباره اجرا شود */
   ball=null;stTracks=[];prevCand=null;ballStable=0;trail=[];detCands=[];liveArc=null;
   calib3D=null;fit3Dlive=null;tHit3D=null;kf=null;vel={x:0,y:0};lostN=0;outN=0;lowRun=0;
-  lastLockR=0;obs=[];predPts=null;launchPos=null;
+  lastLockR=0;obs=[];predPts=null;launchPos=null;reconMode=false;reconFull=null;reconLand=null;
   setPhase('detect');
   toast('از ابتدا — قفل خودکار روی توپ',2000);
 }
@@ -802,7 +802,7 @@ function resetShot(){
   }catch(e){}
   ball=null;prevCand=null;ballStable=0;trail=[];prevGray=null;vel={x:0,y:0};
   outN=0;lowRun=0;detectMiss=0;lowThr=false;clubSeen=false;clubBox=null;impactCnt=0;
-  fileTapFail=null;lastNoBallHintAt=0;launchPos=null; /* v35.3+v35.6 */
+  fileTapFail=null;lastNoBallHintAt=0;launchPos=null;reconMode=false;reconFull=null;reconLand=null;
   detCands=[];liveArc=null;stTracks=[];autoCooldownUntil=performance.now()+1200;tapHint=null;calib3D=null;fit3Dlive=null;tHit3D=null;
   setPhase('detect');
 }
@@ -1354,12 +1354,50 @@ function scanFlightCands(gray,data,pG,px,py,RR,th){
   return out;
 }
 function seedLaunchVel(kf,x,y){
-  /* بذر سرعت پس از ناپدید شدن توپ از حالت سکون — به سمت بالای زمین (نه فیزیک جعلیِ کالیبره‌نشده) */
   launchPos=launchPos||{x:x,y:y};
   if(y/AH<=0.62)return;
   const vUp=clampN((y-AH*0.18)/0.22, 90, 420);
   kf.s[3]=Math.min(kf.s[3], -vUp);
-  kf.s[2]+= (AW*0.62-x)*0.45; /* ملایم به سمت زمین، نه از روی بازیکن */
+  kf.s[2]+= (AW*0.62-x)*0.45;
+}
+/* v36: بازسازی قوس پرواز — معماری Shot Tracer، نه شکار پیکسل.
+   درایو ۳۰fps توپ را در پرواز نشان نمی‌دهد؛ قوس از تی + جهت زمین ساخته می‌شود.
+   لمس هنگام track = نقطهٔ فرود (راهنما). */
+function makeReconFlight(x0,y0,land){
+  const p0={x:x0,y:y0};
+  const p2=land||{
+    x:clampN(x0+(AW*0.46-x0)*0.70, 22, AW-22),
+    y:clampN(AH*0.24, 30, y0-80)
+  };
+  const p1={
+    x:(p0.x+p2.x)*0.5,
+    y:clampN(Math.min(p0.y,p2.y)*0.10, AH*0.05, AH*0.18)
+  };
+  const n=80, pts=[];
+  for(let i=0;i<=n;i++){
+    const t=i/n,u=1-t;
+    pts.push({x:u*u*p0.x+2*u*t*p1.x+t*t*p2.x, y:u*u*p0.y+2*u*t*p1.y+t*t*p2.y});
+  }
+  return pts;
+}
+function startReconTrack(x,y){
+  reconMode=true;
+  reconFull=makeReconFlight(x,y,reconLand);
+  trail=[reconFull[0]];
+  predPts=reconFull;
+  lostN=0;outN=0;lowRun=0;
+}
+function revealRecon(){
+  if(!reconFull||reconFull.length<2)return;
+  const t=(performance.now()-tImpact)/1000;
+  const reveal=clampN(t/2.2, 0.05, 1);
+  const n=Math.max(2, Math.floor((reconFull.length-1)*reveal)+1);
+  trail=reconFull.slice(0,n);
+  const lp=trail[trail.length-1];
+  if(lp.y<apexY)apexY=lp.y;
+  let pl=0;
+  for(let i=1;i<trail.length;i++)pl+=Math.hypot(trail[i].x-trail[i-1].x,trail[i].y-trail[i-1].y);
+  distNow=pl*XM()/Math.max(8,pxPerMeter);
 }
 /* v35.3: تخمین شعاع توپ در نقطه‌ی لمس (برای قفل دستی در ویدیو) —
    روشن‌ترین نقطه‌ی محلی را پیدا می‌کند و دایره را تا افتِ روشنایی به زمینه گسترش می‌دهد */
@@ -1404,9 +1442,17 @@ function estimateBallR(cx,cy){
    2) اگر کاندیدای معتبرِ توپ نزدیک تاچ هست → قفل فوریِ تأییدشده (کمک برای یافتن سریع‌تر)
    v35.3: در ویدیو — اگر سیگنالی نبود، دو تاچِ پشت‌سرهم در همان نقطه = قفل دستی مستقیم */
 function tapAssist(tx,ty){
-  /* v35.6: لمس = فقط راهنما. هرگز قفل نمی‌کند.
-     قفل از auto-lock چندفریمی می‌آید. دو-تاچ در ویدیو = آخرین راه قفل دستی. */
+  /* v36: لمس = راهنما. در track+recon = نقطهٔ فرود قوس. هرگز قفل تک‌ضربه. */
   if(!lastGray)return;
+  if(phase==='track'&&reconMode&&launchPos){
+    reconLand={x:tx,y:ty};
+    reconFull=makeReconFlight(launchPos.x,launchPos.y,reconLand);
+    predPts=reconFull;
+    revealRecon();
+    beep(880);
+    toast('نقطهٔ فرود ثبت شد — قوس بازسازی شد',2000);
+    return;
+  }
   tapHint={x:tx,y:ty,until:performance.now()+TAP_HINT_MS};
   beep(700);
   if(mode==='file'&&phase==='detect'){
@@ -1728,8 +1774,9 @@ function armedStep(gray,data,dt){
       liveArc=null;
       trail=[{x:ball.x,y:ball.y}];
       kf=makeKF(ball.x,ball.y,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;
-      launchPos={x:ball.x,y:ball.y};
+      launchPos={x:ball.x,y:ball.y};reconMode=false;reconFull=null;reconLand=null;
       apexY=ball.y;distNow=0;lostN=0;outN=0;lowRun=0;lastSpd=0;impactCnt=0;clubSeen=false;
+      if(!found) startReconTrack(ball.x,ball.y);
       setPhase('track');beep(1250);
       return;
     }
@@ -1765,6 +1812,19 @@ function clubShieldBlocks(x,y){
   return Math.hypot(x-clubShield.zone.x,y-clubShield.zone.y)<=clubShield.zone.r+7; /* +7: لبه‌ی کلاب هم ممنوع */
 }
 function trackStep(gray,data,dt){
+  /* v36: درایو بدون پیکسل پرواز → قوس بازسازی‌شده (Shot Tracer)، شکار پیکسل نکن */
+  if(reconMode){
+    revealRecon();
+    const elR=(performance.now()-tImpact)/1000;
+    if(elR>2.5){if(reconFull)trail=reconFull;finishShot(elR,'recon');return;}
+    prevGray=gray;
+    return;
+  }
+  /* اگر توپ از تی غیب شد (درایو لایو) → سوییچ به بازسازی */
+  if(lostN>=3&&launchPos&&launchPos.y/AH>0.62&&Math.hypot((kf?kf.s[0]:ball.x)-launchPos.x,(kf?kf.s[1]:ball.y)-launchPos.y)<28){
+    startReconTrack(launchPos.x,launchPos.y);
+    revealRecon();prevGray=gray;return;
+  }
   /* v30: مدل حرکت بالستیک — اگر کالیبراسیون گرانش معتبر داریم، شتاب فیزیک را به کالمن تزریق کن (coast = قوس واقعی، نه خط راست) */
   if(liveArc&&liveArc.t&&performance.now()-liveArc.t<700&&kf){
     const ppm=liveArc.ppm;
@@ -2093,6 +2153,7 @@ function analyzeShot(reason){
 }
 function finishShot(el,reason){
   if(phase!=='track')return;
+  if(reconMode&&reconFull&&reconFull.length>2){trail=reconFull;predPts=reconFull;}
   setPhase('done');
   lastMedia=null;cardHtml=null;
   try{$('arThumb').classList.remove('show','pulse');}catch(e){}
@@ -2640,10 +2701,11 @@ function loop(ts){
   alignPrev(gray); /* v35.1: فقط در file mode اثر دارد — تراز فریمِ قبلی بر اساس لرزش دوربین */
   /* PATCH 41: فریم تکراری ویدیو (۳۰fps روی ۶۰fps رندر) → کالمن بدون آپدیت رانش می‌کند؛ پردازش نشود
      مقایسه با prevGray (آخرین فریم پردازش‌شده) — حساس به «موقعیت»، برخلاف جمع */
-  if(phase==='track'){
+  if(phase==='track'||(phase==='armed'&&mode==='file')){
     let same=true;
     if(prevGray){for(let i=0;i<gray.length;i+=7){if(gray[i]!==prevGray[i]){same=false;break;}}}
     if(same&&prevGray){
+      if(phase==='armed'){drawHud();updPanels(dt);return;}
       if(kf)kfPredict(kf,dt);
       if(kf&&(kf.s[0]<-8||kf.s[0]>AW+8||kf.s[1]<-8||kf.s[1]>AH+8))outN++;
       if(lastSpd<0.09)lowRun+=dt;

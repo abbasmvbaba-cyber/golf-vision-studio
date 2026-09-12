@@ -336,42 +336,26 @@ Fixes (file mode only):
 | NIGHT video (tee drive) | lock f13 (314,568)=**ball**, impact **f129** (true strike; was f181) |
 | Camera mode | untouched (`mode==='file'` gates) |
 
-Remaining limitation (architecture §29): this night drive at **30 fps** makes
-the in-flight ball invisible after 1 frame (gone from the tee at f129, no
-stable blob in the 320-wide grid). The tracer after impact is the ballistic
-reconstruction from lock+impact, not a pixel track of a 1-px streak. Higher
-frame-rate cameras (120/240) are required for in-flight pixels on a full
-drive. Putts and slower chips remain pixel-tracked.
-impact lock** worked; post-impact track
-was missing. Also: live camera must use the **same** detector/tracker as
-file/video; tap must **help find**, never lock.
+Remaining limitation of pixel-tracking: a 30 fps full drive has **no in-flight
+pixels** after the strike frame.
 
-Patch only. The open-source PuttClub tracker zip is used as the **architecture
-of the core** (not a rewrite): every frame `predict → dynamic ROI → score →
-correct or Kalman-coast`. The Python zip itself mis-locks these clips (night
-locks a mid-frame glint, prev locks the club cluster); we keep our lock
-(which is correct on the tee) and port the **temporal** loop.
+## v36 — Shot Tracer architecture: reconstruct the arc (stop hunting pixels)
 
-| Change | Detail |
+Ruthless finding: 35 versions of blob+Kalman cannot track a 150 mph ball on a
+30 fps phone clip. Broadcast systems use high-speed cameras; consumer Shot Tracer
+does **not** pixel-track the flight — it sets the **impact frame**, optionally a
+**landing**, and **reconstructs** the red line. Native iOS would not add pixels
+that are not in the file.
+
+v36 follows that product model:
+
+| Shot | Behaviour |
 |---|---|
-| `scanFlightCands` | Permissive in-flight detector in the predicted ROI (elongation ≤3.6, r≥1, motion-blur OK). Tracker scores (pred + newness + radius + appearance); detector does not hard-reject. |
-| Kalman coast | Unmatched frames **keep predicted points on the trail** (zip: do not drop the track). `obs` stays measurement-only (no fake physics in the fit). |
-| `seedLaunchVel` | If the ball vanishes from rest in the lower frame (drive), seed a modest upward image velocity so the coast leaves the tee. Not a calibrated 3D launch. |
-| Launch leftover | After impact, reject tee-zone / below-tee / upper-frame floodlight blobs (`filledRingR` both modes, static-bright veto, y/AH<0.40 skip, jump cap ≤70px). |
-| Live = file | `scanBallCands` bottom-bias + sky penalty, `scanWhiteDots`, lock selection (sky / dark-surround / rigidity), `filledRingR`, single-frame dens burst, thicker tracer — **camera and video**. `alignPrev` stays file-only (handheld optical flow). |
-| Tap = hint | `tapAssist` never calls `lockBallAt` on a single tap. Two-tap in file/detect remains the last-resort manual lock. |
-| Close ball | `r` max 45→70 so a sofa-distance ball can lock on live camera. |
+| Drive (ball vanishes at impact) | `startReconTrack` — quadratic Bézier from tee toward the range, revealed over ~2.2 s like a broadcast tracer |
+| Putt / chip (ball still visible) | existing pixel Kalman track (unchanged) |
+| Tap during reconstructed flight | sets **landing** and rebuilds the arc (hint, not a lock) |
 
-| Test | Result |
-|---|---|
-| harness.js | 28/28 |
-| Syntax (extracted app script) | OK |
-| OLD putt | lock f13 (158,307)=ball |
-| PREV full-shot | lock f15 (244,577), impact f56, predicted trail continues |
-| NIGHT tee drive | lock f13 (314.5,568.8)=**ball**, impact **f129**, **0** in-flight pixel matches (honest), **91** Kalman-coast trail points going **up** the range |
+Also: skip duplicate video frames in **armed** (30 fps file on 60 Hz was
+resetting the impact counter).
 
-Remaining limits: a 30 fps full drive has **no in-flight pixels** after the
-strike frame — the red tracer is the Kalman prediction from lock+impact, not
-a tracked streak. Higher FPS (120/240) is required to score real flight
-blobs. PREV lock is still on the ball/club cluster (they merge at 320-wide).
-Do not treat the coast heading as a measured launch angle.
+Harness: 28/28. SW cache `golf-ar-v37`.
