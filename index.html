@@ -846,6 +846,7 @@ $('arShutter').onclick=()=>{
     liveArc=null;
     trail=[{x:ball.x,y:ball.y}];
     kf=makeKF(ball.x,ball.y,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;
+    launchPos={x:ball.x,y:ball.y};reconMode=false;reconFull=null;reconLand=null;
     apexY=ball.y;distNow=0;lostN=0;outN=0;lowRun=0;lastSpd=0;impactCnt=0;clubSeen=false;
     startRec();setPhase('track');beep(1250);
   }else if(phase==='track'){
@@ -1776,7 +1777,10 @@ function armedStep(gray,data,dt){
       kf=makeKF(ball.x,ball.y,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;
       launchPos={x:ball.x,y:ball.y};reconMode=false;reconFull=null;reconLand=null;
       apexY=ball.y;distNow=0;lostN=0;outN=0;lowRun=0;lastSpd=0;impactCnt=0;clubSeen=false;
-      if(!found) startReconTrack(ball.x,ball.y);
+      /* v36.1: درایو = توپ غیب یا انفجار حرکت. پات = توپ هنوز هست و dens پایین.
+         بدون این، leftover تی باعث می‌شد قوس هرگز کشیده نشود. */
+      const isDrive=!found||dens>=0.10;
+      if(isDrive){startReconTrack(ball.x,ball.y);toast('خط پرواز ساخته شد — روی محل فرود بزن تا تنظیم شود',3200);}
       setPhase('track');beep(1250);
       return;
     }
@@ -2348,7 +2352,7 @@ function tracePath(s){
 function drawTracer(pts){
   const s=smoothPts(pts,4);
   if(s.length<2)return;
-  const lw=clampN((ball?ball.r:8)*SCX*1.2,8,22);
+  const lw=clampN((ball?ball.r:8)*SCX*(reconMode?1.6:1.2),reconMode?12:8,reconMode?28:22);
   ctx.lineCap='round';ctx.lineJoin='round';
   ctx.strokeStyle=hexA(tracerCol,0.22);ctx.lineWidth=lw*2.6;tracePath(s);ctx.stroke();
   ctx.strokeStyle=hexA(tracerCol,0.45);ctx.lineWidth=lw*1.6;tracePath(s);ctx.stroke();
@@ -2803,4 +2807,5 @@ $('statsExport').onclick=()=>{
 </script>
 <script>if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{});});}</script>
 </body>
+</html>
 </html>
