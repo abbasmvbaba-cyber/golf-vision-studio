@@ -394,6 +394,24 @@ T('T27','v34 scanBallCands: close ball beats bright edge noise (portrait)',funct
   ok(out[0]===ball,'ball must be rank #1, top is '+out[0].x.toFixed(0)+','+out[0].y.toFixed(0));
 });
 
+T('T28','v35.1 file mode: autoLockMulti loose survives 3 dropped frames (video compression)',function(){
+  /* توپِ واقعی در (100,400) با r≈20 و لرزش اندازه‌ی ±۵٪ (فشرده‌سازی) —
+     در فریم‌های ۴ تا ۶ بلاب تماماً گم می‌شود (بلاکِ فشرده‌سازی/محرک کلاب) */
+  const cand=(present,r)=>present?[{x:100,y:400,r:r||20,score:3}]:[];
+  const seq=[cand(1,20),cand(1,21),cand(1,19),cand(0,0),cand(0,0),cand(0,0),
+             cand(1,20),cand(1,21),cand(1,20),cand(1,19),cand(1,20),cand(1,21),cand(1,20),cand(1,19)];
+  /* strict (دوربین): افت ۳ فریمی = مرگ فرضیه → تا فریم ۱۴ به ۱۰ فریم نمی‌رسد */
+  let sts=[];let strictLock=null;
+  for(const c of seq){const al=GVS.autoLockMulti(sts,c,10,20,null,0,0);sts=al.sts;if(al.locked)strictLock=al.locked;}
+  /* loose (ویدیو): افت فریم = پس‌روی تدریجی، فرضیه زنده می‌ماند → قفل می‌شود */
+  sts=[];let looseLock=null;
+  for(const c of seq){const al=GVS.autoLockMulti(sts,c,7,14,null,0,1);sts=al.sts;if(al.locked)looseLock=al.locked;}
+  ok(looseLock,'loose should lock despite the 3-frame drop, got none');
+  ok(Math.hypot(looseLock.x-100,looseLock.y-400)<4,'loose lock off-target: '+looseLock.x.toFixed(0)+','+looseLock.y.toFixed(0));
+  /* رفتار strict دست‌نخورده بماند (صفر regression روی دوربین) */
+  ok(strictLock===null,'strict must NOT lock after a 3-frame drop (camera path changed!)');
+});
+
 let p=0,f=0;
 for(const r of results){
   if(r.ok){p++;console.log('  PASS '+r.id+' — '+r.name);}

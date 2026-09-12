@@ -641,13 +641,14 @@ async function startFile(f){
     $('arShutter').classList.remove('rec','done');
     return;
   }
+  lastLockR=0;ballDet.lastR=0; /* v35.1: نگهبان اندازه‌ی قفلِ قبلیِ دوربین نباید ویدیو را محدود کند */
   mode='file';
   setPhase('detect');
   $('arVidBar').classList.add('on');
   $('arFlip').style.display='none';
   $('vidSeek').value=0;
   $('vidTime').textContent='0:00 / 0:00';
-  toast('ویدیو بارگذاری شد — قفل خودکار روی توپ · اسلایدر = اسکرول فیلم',3400);
+  toast('ویدیو فعال شد — قفل خودکار روی توپ · اگر قفل نشد، روی توپ بزن',4200);
 }
 function stopFile(){
   const hadSrc=!!fileUrl||vid.hasAttribute('src');
@@ -989,7 +990,9 @@ function detectStep(gray,data){
       stTracks=[];
     }else{
       const hint=(tapHint&&performance.now()<tapHint.until)?{x:tapHint.x,y:tapHint.y,r:TAP_HINT_R,f:AUTO_LOCK_FRAMES_HINT}:null;
-      const al=gvsAutoLockMulti(stTracks,detCands,AUTO_LOCK_FRAMES,AUTO_LOCK_FRAMES*2,hint,hint?0:lastLockR);
+      /* v35.1: ویدیوی ذخیره‌شده — فشرده‌سازی و لرزش دست: ثبات کمتر + حوصله‌ی بیشتر (loose) */
+      const minF=mode==='file'?7:AUTO_LOCK_FRAMES;
+      const al=gvsAutoLockMulti(stTracks,detCands,minF,minF*2,hint,hint?0:lastLockR,mode==='file'?1:0);
       stTracks=al.sts;
       if(al.locked)lockBallAt(al.locked.x,al.locked.y,al.locked.r,'auto');
     }
@@ -1081,6 +1084,7 @@ function lockBallAt(lx,ly,lr,src){
   seedCol=sampleColor(lx,ly,Math.max(2,r*0.9));
   vel={x:0,y:0};lostN=0;outN=0;lowRun=0;kf=makeKF(lx,ly,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;trail=[{x:lx,y:ly}];apexY=ly;lmX=0;lmY=0;lmT=0;liveArc=null;
   prevGray=lastGray;armGrace=performance.now()+450;
+  stabC.x=0;stabC.y=0;stabC.lx=lx;stabC.ly=ly;slowCnt=0;sdPeak=0;stabBall={x:lx,y:ly};noStrongX=0;noStrongY=0;globalThis.__alignHX=[];globalThis.__alignHY=[];globalThis.__alignWin={g:null,n:0};globalThis.__winD=null; /* v35.1: مبدأِ مختصات پایدار + پنجره‌ی بازپیمایش */
   setPhase('armed');beep(880);
 }
 /* v32: تاچ = راهنمای ناحیه‌یابی (نه قفل مستقیم)
@@ -1120,9 +1124,201 @@ function sampleColor(x,y,rr){
   }catch(e){return[245,245,245];}
 }
 
+/* v35.1: جبران لرزش دستِ دوربین در ویدیوی ذخیره‌شده —
+   جابه‌جایی سراسری (dx,dy) بین فریم فعلی و قبلی با جستجوی SAD درشت تخمین می‌شود و
+   نسخه‌ی «تراز‌شده» (prevA) از فریم قبل ساخته می‌شود: دنیا ایستا به‌نظر می‌رسد و
+   فقط توپ حرکت می‌کند → تریگر ضربه/کلاب دیگر با لرزش دست فریب نمی‌خورند.
+   فقط در file mode فعال است (مسیر دوربین بی‌تغییر — صفر regression). */
+let prevA=null,alignDx=0,alignDy=0;
+let stabC={x:0,y:0,lx:0,ly:0}; /* v35.1: جابه‌جایی تجمعی دوربین از لحظه‌ی قفل (frame پایدار) + نقطه‌ی قفل */
+let noStrongX=0,noStrongY=0; /* v35.1: شمارنده‌ی فریم‌های ضعیف برای سقفِ خزشِ مشکوک */
+let slowCnt=0; /* v35.1: شمارنده‌ی جابه‌جایی پایدار (توپ کند) */
+let stabBall={x:0,y:0}; /* v35.1: موقعیت EMA توپ در مختصات پایدار (آرج‌مکسِ نویزی نرم می‌شود) */
+let stabHist=[]; /* v35.1: تاریخچه‌ی ۱۶ فریمیِ موقعیت پایدار — جابه‌جایی روی پنجره (حرکت کند هم انتگرال می‌شود) */
+let sdPeak=0; /* v35.1: اوجِ جابه‌جایی در اپیزودِ جاری — پات = قله‌ی تند، خزشِ تیلت = دشتِ صاف */
+function alignPrev(gray){
+  prevA=null;alignDx=0;alignDy=0;
+  if(mode!=='file'||!prevGray)return;
+  /* فریم یکسان (ویدیو متوقف) → بدون جابه‌جایی، بدون جستجو */
+  let diff=0;
+  for(let i=0;i<gray.length;i+=97){const d=gray[i]-prevGray[i];diff+=d<0?-d:d;}
+  if(diff<0.01){prevA=prevGray;return;}
+  /* v35.1: بازپیمایشِ پنجره‌ای (~هر ۶ فریم): حرکتِ کندِ دوربین (تیلتِ ۰/۲-۰/۴ پیکسل
+     در فریم) زیرِ کفِ نویزِ تک‌فریم است؛ مقایسه با عکسِ ۶ فریمِ پیش‌تر جابه‌جایی
+     تجمعی (~۱.۵-۲.۵ پیکسل) قابل‌اندازه‌گیری می‌کند. __winD = سهمِ هر فریم. */
+  {
+    let _win=globalThis.__alignWin;
+    if(!_win){_win={g:null,n:0};globalThis.__alignWin=_win;}
+    _win.n++;
+    if(_win.n>=6){
+      _win.n=0;
+      if(_win.g){
+        const WR=12,WINGATE=0.0012;
+        const winAxis=(shiftX)=>{
+          const prof=new Array(WR*2+1);
+          let wb=0,wbest=1e18,wc0=1e18,wcc=0;
+          for(let sh=-WR;sh<=WR;sh++){
+            let sad=0,c=0;
+            if(shiftX){
+              for(let y=16;y<AH-16;y+=5){
+                const rp=y*AW;
+                for(let x=16;x<AW-16;x+=5){
+                  const px=x+sh;
+                  if(px<4||px>=AW-4)continue;
+                  const d=gray[rp+x]-_win.g[rp+px];
+                  sad+=d<0?-d:d;c++;
+                }
+              }
+            }else{
+              for(let y=16;y<AH-16;y+=5){
+                const py=y+sh;
+                if(py<4||py>=AH-4)continue;
+                const rp=py*AW;
+                for(let x=16;x<AW-16;x+=5){
+                  const d=gray[y*AW+x]-_win.g[rp+x];
+                  sad+=d<0?-d:d;c++;
+                }
+              }
+            }
+            if(c>300){
+              prof[sh+WR]=sad/c;
+              if(sh===0){wc0=sad;wcc=c;}
+              if(sad<wbest){wbest=sad;wb=sh;}
+            }
+          }
+          if(wcc<300||!isFinite(wc0))return 0;
+          const m=(wc0-wbest)/wcc;
+          if(m<WINGATE)return 0;
+          let d=0;
+          const bi=wb+WR;
+          if(bi>0&&bi<prof.length-1){
+            const a=prof[bi-1],bb=prof[bi],cc=prof[bi+1];
+            const den=a-2*bb+cc;
+            if(den>=1e-6){d=0.5*(a-cc)/den;if(d<-0.5)d=-0.5;else if(d>0.5)d=0.5;}
+          }
+          const sub=wb+d;
+          return Math.abs(sub)>=0.15?sub:0;
+        };
+        globalThis.__winD={x:winAxis(true)/6,y:winAxis(false)/6};
+      }
+      _win.g=gray.slice();
+    }
+  }
+  /* جستجوی جداسازِ تک‌محوره (X و Y جدا) + آستانه‌ی اطمینان برای هر محور:
+     وقتی SAD روی یک محور تقریباً صاف است (حرکت واقعی نیست)، برآورد آن محور
+     نویز است و تجمیع‌اش موقعیت پایدار را خفه می‌کند → همان محور را صفر می‌کنیم */
+  let bx=0,by=0,sadX0=1e18,sadXb=1e18,sadY0=1e18,sadYb=1e18,cX=0,cY=0;
+  const profX=new Array(17),profY=new Array(17);
+  for(let dx=-8;dx<=8;dx++){
+    let sad=0,c=0;
+    for(let y=16;y<AH-16;y+=5){
+      const rp=y*AW;
+      for(let x=16;x<AW-16;x+=5){
+        const px=x+dx;
+        if(px<4||px>=AW-4)continue;
+        const d=gray[rp+x]-prevGray[rp+px];
+        sad+=d<0?-d:d;c++;
+      }
+    }
+    if(c>300){
+      profX[dx+8]=sad/c;
+      if(dx===0)sadX0=sad;
+      if(sad<sadXb){sadXb=sad;bx=dx;}
+      if(dx===0)cX=c;
+    }
+  }
+  for(let dy=-8;dy<=8;dy++){
+    let sad=0,c=0;
+    for(let y=16;y<AH-16;y+=5){
+      const py=y+dy;
+      if(py<4||py>=AH-4)continue;
+      const rp=py*AW;
+      for(let x=16;x<AW-16;x+=5){
+        const d=gray[y*AW+x]-prevGray[rp+x];
+        sad+=d<0?-d:d;c++;
+      }
+    }
+    if(c>300){
+      profY[dy+8]=sad/c;
+      if(dy===0)sadY0=sad;
+      if(sad<sadYb){sadYb=sad;by=dy;}
+      if(dy===0)cY=c;
+    }
+  }
+  /* v35.1: پالایش تک‌نقطه‌ایِ SAD (پیرامینِ کمینه، با پارابولا): حرکتِ کندِ دوربین
+     (مثلاً تیلتِ ۰/۳ پیکسل در فریم) در رزولوشنِ صحیح بین ۰ و ۱ نوسان می‌کند و
+     تجمیعش نویز می‌شود؛ با برآوردِ کسری، حرکتِ واقعی جمع می‌شود.
+     گیت: زیر GATE = دشت (نویز)؛ بالای FAST = حرکتِ آشکار (بلافاصله قبول)؛
+     میانه: فقط با جمعِ سه‌فریمیِ هم‌جهتِ برآوردهای خام (تیلت پایدار می‌ماند،
+     نویزِ بی‌نظم نمی‌ماند). */
+  const GATE=0.0025,FAST=0.008;
+  let _ahx=globalThis.__alignHX;if(!_ahx){_ahx=[];globalThis.__alignHX=_ahx;}
+  let _ahy=globalThis.__alignHY;if(!_ahy){_ahy=[];globalThis.__alignHY=_ahy;}
+  const para=(pr,bi)=>{
+    if(bi<=0||bi>=16)return 0;
+    const a=pr[bi-1],bb=pr[bi],cc=pr[bi+1];
+    const den=a-2*bb+cc;
+    if(den<1e-6)return 0;
+    let d=0.5*(a-cc)/den;
+    if(d<-0.5)d=-0.5;else if(d>0.5)d=0.5;
+    return d;
+  };
+  const rawX=(bx!==0)?bx+para(profX,bx+8):0;
+  const rawY=(by!==0)?by+para(profY,by+8):0;
+  const mX=(sadX0-sadXb)/Math.max(1,cX);
+  const mY=(sadY0-sadYb)/Math.max(1,cY);
+  globalThis.__alignStrong={x:(Math.abs(rawX)>=0.4&&mX>=FAST),y:(Math.abs(rawY)>=0.4&&mY>=FAST)};
+  const gateAxis=(raw,m,h1,h2,h3)=>{
+    if(!raw)return 0;
+    if(m<GATE)return 0;
+    if(m<FAST){
+      const sum=h1+h2+h3;
+      if(Math.sign(sum)!==Math.sign(raw)||Math.abs(sum)<0.5)return 0;
+    }
+    return raw;
+  };
+  const nX=_ahx.length,nY=_ahy.length;
+  const fx=gateAxis(rawX,mX,
+    nX>=3?_ahx[nX-3]:0,nX>=2?_ahx[nX-2]:0,nX>=1?_ahx[nX-1]:0);
+  const fy=gateAxis(rawY,mY,
+    nY>=3?_ahy[nY-3]:0,nY>=2?_ahy[nY-2]:0,nY>=1?_ahy[nY-1]:0);
+  _ahx.push(rawX);if(_ahx.length>4)_ahx.shift();
+  _ahy.push(rawY);if(_ahy.length>4)_ahy.shift();
+  bx=fx;by=fy;
+  if(!bx&&!by){prevA=prevGray;return;}
+  alignDx=bx;alignDy=by;
+  if(!prevA)prevA=new Float32Array(AW*AH);
+  for(let y=0;y<AH;y++){
+    const sy=y+by;
+    if(sy<1||sy>=AH-1){for(let x=0;x<AW;x++)prevA[y*AW+x]=prevGray[y*AW+x];continue;}
+    const iy=sy|0,fy=sy-iy,r0=iy*AW,r1=r0+AW;
+    for(let x=0;x<AW;x++){
+      const sx=x+bx;
+      if(sx<1||sx>=AW-1){prevA[y*AW+x]=prevGray[y*AW+x];continue;}
+      const ix=sx|0,fx=sx-ix;
+      prevA[y*AW+x]=prevGray[r0+ix]*(1-fx)*(1-fy)+prevGray[r0+ix+1]*fx*(1-fy)+prevGray[r1+ix]*(1-fx)*fy+prevGray[r1+ix+1]*fx*fy;
+    }
+  }
+}
+
 /* ---------- فاز ۲: منتظر ضربه — تریگر فقط با جابه‌جایی خودِ توپ ---------- */
 function armedStep(gray,data,dt){
   const now=performance.now();
+  if(mode==='file'&&!vid.paused){
+    /* v35.1: جمعِ جابه‌جایی دوربین از بازپیمایشِ پنجره‌ای (دقیق‌تر برای حرکتِ کند)؛
+       تا فرستِ پنجره پر شود، برآوردِ تک‌فریم کافی است. (توقف ویدیو: جمع نمی‌شود،
+       وگرنه برآوردِ کهنه‌ی پنجره خزشِ دروغ می‌سازد) */
+    const _wd=globalThis.__winD;
+    if(_wd){stabC.x+=_wd.x;stabC.y+=_wd.y;}
+    else{stabC.x+=alignDx;stabC.y+=alignDy;}
+    /* سقفِ خزش: اگر یک محور ۸ فریمِ پیاپی بدون برآوردِ قوی (تک‌فریم یا پنجره‌ای)
+       باشد و خزشش از ۸ پیکسل گذشته، تجمیعِ نویز است نه حرکتِ دوربین → صفر می‌شود */
+    const _st=globalThis.__alignStrong||{x:false,y:false};
+    if(_st.x||(_wd&&Math.abs(_wd.x)>=0.1))noStrongX=0;else noStrongX++;
+    if(_st.y||(_wd&&Math.abs(_wd.y)>=0.1))noStrongY=0;else noStrongY++;
+    if(noStrongX>8&&Math.abs(stabC.x)>8)stabC.x=0;
+    if(noStrongY>8&&Math.abs(stabC.y)>8)stabC.y=0;
+  } /* v35.1: هر فریم — حتی در armGrace */
   if(now<armGrace){prevGray=gray;return;}
   /* جستجوی محلی خود توپ */
   const seedL=(seedCol[0]*0.4+seedCol[1]*0.45+seedCol[2]*0.15)/255;
@@ -1142,13 +1338,14 @@ function armedStep(gray,data,dt){
     if(s>best){best=s;bx=x;by=y;}
   }
   const found=bx>=0&&Math.hypot(bx-ball.x,by-ball.y)<R;
-  /* حرکت کلی ناحیه (فقط برای کادر کلاب) */
+  /* حرکت کلی ناحیه (فقط برای کادر کلاب) — v35.1: در ویدیو با فریمِ تراز‌شده (بدون لرزش دوربین) */
+  const pG=(mode==='file'&&prevA)?prevA:prevGray;
   const RR=Math.max(20,ball.r*3);
   let moved=0,cnt=0,minx=1e9,maxx=-1,miny=1e9,maxy=-1;
   const my0=Math.max(0,ball.y-RR),my1=Math.min(AH,ball.y+RR),mx0=Math.max(0,ball.x-RR),mx1=Math.min(AW,ball.x+RR);
   for(let y=my0;y<my1;y+=2)for(let x=mx0;x<mx1;x+=2){
     cnt++;
-    if(Math.abs(gray[y*AW+x]-prevGray[y*AW+x])>0.12){
+    if(Math.abs(gray[y*AW+x]-pG[y*AW+x])>0.12){
       moved++;
       if(x<minx)minx=x;if(x>maxx)maxx=x;if(y<miny)miny=y;if(y>maxy)maxy=y;
     }
@@ -1156,11 +1353,46 @@ function armedStep(gray,data,dt){
   const dens=moved/Math.max(1,cnt);
   if(dens>0.02&&!clubSeen){clubSeen=true;beep(660);setChips();}
   if(clubSeen&&moved>3)clubBox={x0:minx,y0:miny,x1:maxx,y1:maxy};
-  /* تریگر: توپ واقعاً جابه‌جا شده (۲ فریم پشت‌هم) یا انفجار حرکتِ شدید بدون تطابق */
-  const jump=found?Math.hypot(bx-ball.x,by-ball.y):0;
+  /* تریگر: توپ واقعاً جابه‌جا شده (۲ فریم پشت‌هم) یا انفجار حرکتِ شدید بدون تطابق
+     v35.1: در ویدیو، موقعیتِ مورد انتظار توپ را بر جابه‌جایی برآوردشده‌ی دوربین جبران کن
+     (لرزش دست نباید به‌عنوان حرکت توپ بشمارد).
+     alignPrev جابه‌جایی محتوای فریمِ قبلی را برمی‌گرداند (bx)؛ جابه‌جایی دنیا در
+     مختصات خام برابر است با -bx → موقعیتِ مورد انتظار توپ = ball - align. */
+  const exX=(mode==='file')?ball.x-alignDx:ball.x, exY=(mode==='file')?ball.y-alignDy:ball.y;
+  const jump=found?Math.hypot(bx-exX,by-exY):0;
   if(found&&jump>Math.max(3,ball.r*0.9))impactCnt++;
   else if(!found&&dens>0.085)impactCnt++;
   else impactCnt=0;
+  /* v35.1: توپِ کند (پات) — در مختصات پایدار، جابه‌جایی پایدار از نقطه‌ی قفل.
+     لرزش دوربین در مختصات پایدار حذف است؛ ۵ فریمِ پشت‌سرهم بر آستانه = حرکت واقعی
+     (نویز فشرده‌سازی پایدار نمی‌ماند؛ توپِ غلتان پایدار است). ضربه‌ی تند مسیر
+     jump قبل را می‌زند و این شمارنده فرقی بر آن نمی‌کند. */
+  if(mode==='file'&&!vid.paused){
+    let sd=-1;
+    if(found){
+      /* موقعیت توپ در مختصات پایدار با EMA نرم می‌شود — پرش‌های نویزیِ آرج‌مکس
+         (۱-۲ پیکسل داخل بلاب) حذف می‌شوند؛ غلتِ واقعی (کند اما پایدار) می‌ماند */
+      stabBall.x=stabBall.x*0.7+(bx+stabC.x)*0.3;
+      stabBall.y=stabBall.y*0.7+(by+stabC.y)*0.3;
+      /* جابه‌جایی روی پنجره‌ی ۱۶ فریمی: حرکتِ کند هم انتگرال می‌شود، نویزِ پرش‌پرش نمی‌شود */
+      stabHist.push({x:stabBall.x,y:stabBall.y});
+      if(stabHist.length>16)stabHist.shift();
+      if(stabHist.length>=16){
+        const h0=stabHist[0];
+        sd=Math.hypot(stabBall.x-h0.x,stabBall.y-h0.y);
+      }
+    }
+    const slowThr=Math.max(3,ball.r*0.8);
+    if(found&&sd>sdPeak)sdPeak=sd;
+    if(found&&sd>slowThr)slowCnt++;
+    else if(!found||sd<slowThr*0.6){slowCnt=0;sdPeak=0;}
+    /* v35.1: امضای پات = صعودِ تندِ sd به قله (توپِ زده‌شده پنجره‌ی ۱۶ فریم را پر می‌کند)
+       سپس فروریختن؛ خزشِ دوربین/تیلت + لرزش = دشتِ ۳-۵ پیکسلی بدون قله‌ی تند.
+       قله ≥ ۵.۵ بعد از ۱۰ فریمِ پایدار = ضربه. (تأییدِ کلاب در ویدیوی لرزان اعتبار
+       ندارد — دستِ بازیکن با کلاب می‌لرزد — و امضای ضعیف پات از خزشِ لرزان جدا
+       نمی‌شود؛ پس مسیرِ کم‌نور حذف شد تا هشدارِ کاذب ندهیم.) */
+    if(slowCnt>=10&&sdPeak>=5.5)impactCnt=Math.max(impactCnt,2);
+  }
   if(impactCnt>=2){
     if(mode==='file'&&!vid.paused){ /* v35: در ویدیو — ضربه = شروع خودکارِ ردیابی (بدون ضبط) */
       tImpact=performance.now();
@@ -1175,7 +1407,13 @@ function armedStep(gray,data,dt){
     if(found){ball.x=ball.x*0.3+bx*0.7;ball.y=ball.y*0.3+by*0.7;}
     impactCnt=0;
   }
-  if(found&&jump>1.2){ball.x=ball.x*0.5+bx*0.5;ball.y=ball.y*0.5+by*0.5;}
+  if(mode==='file'){
+    /* v35.1: نقطه‌ی قفل هر فریم به موقعیت خامِ توپ می‌چسبد (دوربان می‌لرزد، مختصات خام
+       توپ با فریم جابه‌جا می‌شود؛ چون jump جبران‌شده‌ست، این پیگیری فریبِ لرزش نمی‌خورد) */
+    if(found){ball.x=ball.x*0.3+bx*0.7;ball.y=ball.y*0.3+by*0.7;}
+  }else if(found&&jump>1.2){
+    ball.x=ball.x*0.5+bx*0.5;ball.y=ball.y*0.5+by*0.5;
+  }
   /* v32: تاچِ راهنما — seed گم است؟ ناحیه‌ی تاچ را اسکن کن */
   if(!found&&tapHint&&performance.now()<tapHint.until){
     const hc=scanHintCands(gray,data,tapHint.x,tapHint.y)[0];
@@ -1222,10 +1460,11 @@ function trackStep(gray,data,dt){
   const MR=Math.max(22,Math.round((ball.r||6)*4));
   const mx0=Math.max(1,Math.floor(px-MR)),mx1=Math.min(AW-2,Math.ceil(px+MR));
   const my0=Math.max(1,Math.floor(py-MR)),my1=Math.min(AH-2,Math.ceil(py+MR));
-  if(prevGray){
+  const pG=(mode==='file'&&prevA)?prevA:prevGray; /* v35.1: تراز لرزش دوربین در ویدیو */
+  if(pG){
     for(let y=my0;y<=my1;y+=2)for(let x=mx0;x<=mx1;x+=2){
       mcnt++;
-      if(Math.abs(gray[y*AW+x]-prevGray[y*AW+x])>0.13){moved++;mvx+=x;mvy+=y;}
+      if(Math.abs(gray[y*AW+x]-pG[y*AW+x])>0.13){moved++;mvx+=x;mvy+=y;}
     }
   }
   const mdens=moved/Math.max(1,mcnt);
@@ -1340,7 +1579,7 @@ function trackStep(gray,data,dt){
         if(dd2<RR0||dd2>RR1)continue;
         if(clubShieldBlocks(x2,y2))continue;
         const l2=gray[y2*AW+x2];if(l2<th)continue;
-        if(prevGray&&(l2-prevGray[y2*AW+x2])<0.05)continue;
+        if(pG&&(l2-pG[y2*AW+x2])<0.05)continue; /* v35.1 */
         const j2=(y2*AW+x2)*4;
         if(satOf(data,j2)>(lowThr?0.32:0.26))continue; /* جستجوی باز = سخت‌گیری بیشتر */
         const cs2=1-(Math.abs(data[j2]-seedCol[0])+Math.abs(data[j2+1]-seedCol[1])+Math.abs(data[j2+2]-seedCol[2]))/765;
@@ -1922,7 +2161,11 @@ function updPanels(dt){
     const lightOk=lastLumaAvg>0.03&&lastLumaAvg<0.985;
     const autoOn=SET.auto==='auto';
     const hintOn=tapHint&&performance.now()<tapHint.until;
-    calibEl.innerHTML=hintOn?'TAP ZONE ACTIVE — SEEKING':(lightOk?(autoOn?'AUTO-LOCK · TAP TO GUIDE':'TAP TO GUIDE'):(autoOn?'LOW LIGHT · AUTO-LOCK':'LOW LIGHT · TAP'));
+    if(mode==='file'){ /* v35.1: بازخورد تشخیص روی ویدیو */
+      calibEl.innerHTML=hintOn?'TAP ZONE ACTIVE — SEEKING':(!detCands.length?'SEEKING… NO BALL SIGNAL — TAP THE BALL':(autoOn?'VIDEO AUTO-LOCK · TAP TO GUIDE':'VIDEO — TAP TO GUIDE'));
+    }else{
+      calibEl.innerHTML=hintOn?'TAP ZONE ACTIVE — SEEKING':(lightOk?(autoOn?'AUTO-LOCK · TAP TO GUIDE':'TAP TO GUIDE'):(autoOn?'LOW LIGHT · AUTO-LOCK':'LOW LIGHT · TAP'));
+    }
   }else if(phase==='armed'){
     calibEl.style.display='block';
     if(mode==='file'){ /* v35: در ویدیو، ضربه به‌خودی‌خود ردیابی را شروع می‌کند */
@@ -2013,6 +2256,7 @@ function loop(ts){
   for(let i=0;i<AW*AH;i++){const j=i*4;gray[i]=(data[j]*0.4+data[j+1]*0.45+data[j+2]*0.15)/255;}
   lastGray=gray;lastData=data;if(!prevGray)prevGray=gray;
   if(frameCount%15===0){let s=0,n=0;for(let i=0;i<gray.length;i+=97){s+=gray[i];n++;}lastLumaAvg=s/n;}
+  alignPrev(gray); /* v35.1: فقط در file mode اثر دارد — تراز فریمِ قبلی بر اساس لرزش دوربین */
   /* PATCH 41: فریم تکراری ویدیو (۳۰fps روی ۶۰fps رندر) → کالمن بدون آپدیت رانش می‌کند؛ پردازش نشود
      مقایسه با prevGray (آخرین فریم پردازش‌شده) — حساس به «موقعیت»، برخلاف جمع */
   if(phase==='track'){
@@ -2108,6 +2352,15 @@ $('statsClear2').onclick=()=>{if(confirm('همه‌ی ضربه‌های ذخیر
 $('statsExport').onclick=()=>{
   const b=new Blob([JSON.stringify(loadShots(),null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='golf-shots.json';
+  document.body.appendChild(a);a.click();a.remove();
+};
+})();
+
+</script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{});});}</script>
+</body>
+</html>
+a.href=URL.createObjectURL(b);a.download='golf-shots.json';
   document.body.appendChild(a);a.click();a.remove();
 };
 })();

@@ -202,8 +202,9 @@ function autoLockStep(st,cand,minFrames,sizeRef){
    ترتیب ساختِ فرضیه: کاندیداهای بزرگ اول (به‌ترتیب score)، بعدِ کوچک — حداکثر ۴.
    دلیل: اگر یک نقطه‌ی روشنِ پایدار (مثل لبه‌ی تلویزیون) score بالاتری از توپ داشته
    باشد، قفل دیگر نمی‌تواند دزدیده شود؛ هر فرضیه جداگانه ثبات خودش را می‌شمارد. */
-function autoLockMulti(sts,cands,minF,smallF,hint,sizeRef){
-  const sizeOk=function(r){return !sizeRef||Math.abs(r-sizeRef)<Math.max(2,sizeRef*0.5);};
+function autoLockMulti(sts,cands,minF,smallF,hint,sizeRef,loose){
+  const LT=loose?1.5:1; /* v35.1: file mode — لرزش اندازه/موقعیت (فشرده‌سازی + لرزش دست) */
+  const sizeOk=function(r){return !sizeRef||Math.abs(r-sizeRef)<Math.max(2,sizeRef*0.5*LT);};
   const out=[];
   const used=new Array(cands.length).fill(false);
   for(let i=0;i<sts.length;i++){
@@ -213,12 +214,16 @@ function autoLockMulti(sts,cands,minF,smallF,hint,sizeRef){
       if(used[j])continue;
       const c=cands[j];
       const d=Math.hypot(c.x-st.x,c.y-st.y);
-      if(d<Math.max(4,c.r*0.6)&&Math.abs(c.r-st.r)<st.r*0.5&&d<bestD){bestD=d;best=j;}
+      if(d<Math.max(4,c.r*0.6)*LT&&Math.abs(c.r-st.r)<st.r*(loose?0.75:0.5)&&d<bestD){bestD=d;best=j;}
     }
     if(best>=0){
       used[best]=true;
       const c=cands[best];
       out.push({x:st.x*0.6+c.x*0.4,y:st.y*0.6+c.y*0.4,r:c.r,frames:st.frames+1,min:st.min,misses:0});
+    }else if(loose){
+      /* v35.1: file mode — در ویدیوی فشرده‌شده بلاب گاهی ۱-۲ فریم افت می‌کند؛
+         فرضیه نمی‌میرد، فقط یک فریم پس می‌رود (بدون ریست کامل) */
+      out.push({x:st.x,y:st.y,r:st.r,frames:Math.max(0,st.frames-1),min:st.min,misses:(st.misses||0)+1});
     }else if((st.misses||0)<2){
       out.push({x:st.x,y:st.y,r:st.r,frames:st.frames,min:st.min,misses:(st.misses||0)+1});
     }
