@@ -1302,6 +1302,25 @@ function scanWhiteDots(gray,data,maxOut){
   }
   return kept;
 }
+/* v35.5: شعاع پُرِ دیسک روشن در (cx,cy) — تی/میخ نازک sr≈1، توپِ کروی sr≈r.
+   معماری ترکر §13 (ثبات شعاع) + §16 (قفل توپ: شیء سفیدِ دیگر جایگزین نشود).
+   فقط file mode صدا می‌زند — مسیر دوربین دست‌نخورده. */
+function filledRingR(gray,cx,cy,th,maxR){
+  let sr=0;
+  const mx=Math.max(1,Math.ceil(maxR));
+  for(let rr=1;rr<=mx;rr++){
+    let ok=0,n=0;
+    for(let k=0;k<20;k++){
+      const a=k/20*6.2831853;
+      const xx=(cx+Math.cos(a)*rr+0.5)|0,yy=(cy+Math.sin(a)*rr+0.5)|0;
+      if(xx<0||yy<0||xx>=AW||yy>=AH)continue;
+      n++;if(gray[yy*AW+xx]>=th)ok++;
+    }
+    if(n<8||ok/n<0.5)break;
+    sr=rr;
+  }
+  return sr;
+}
 /* v35.3: تخمین شعاع توپ در نقطه‌ی لمس (برای قفل دستی در ویدیو) —
    روشن‌ترین نقطه‌ی محلی را پیدا می‌کند و دایره را تا افتِ روشنایی به زمینه گسترش می‌دهد */
 function estimateBallR(cx,cy){
@@ -1606,7 +1625,14 @@ function armedStep(gray,data,dt){
     const s=l*100+cs*40-Math.hypot(x-ball.x,y-ball.y)*1.2;
     if(s>best){best=s;bx=x;by=y;}
   }
-  const found=bx>=0&&Math.hypot(bx-ball.x,by-ball.y)<R;
+  let found=bx>=0&&Math.hypot(bx-ball.x,by-ball.y)<R;
+  /* v35.5: ثبات شعاع — بعد از ضربه تی در پنجره‌ی محلی می‌ماند و مثل توپ «پیدا شده»
+     دیده می‌شود؛ دیسکِ پُرِ آن << r قفل است → found=false تا مسیر swing-burst
+     (!found && dens>0.085) در فریمِ واقعیِ ضربه شلیک کند. فقط file mode. */
+  if(mode==='file'&&found){
+    const sr=filledRingR(gray,bx,by,th,ball.r*0.95+1);
+    if(sr<ball.r*0.5)found=false;
+  }
   /* حرکت کلی ناحیه (فقط برای کادر کلاب) — v35.1: در ویدیو با فریمِ تراز‌شده (بدون لرزش دوربین) */
   const pG=(mode==='file'&&prevA)?prevA:prevGray;
   const RR=Math.max(20,ball.r*3);
@@ -1630,7 +1656,12 @@ function armedStep(gray,data,dt){
   const exX=(mode==='file')?ball.x-alignDx:ball.x, exY=(mode==='file')?ball.y-alignDy:ball.y;
   const jump=found?Math.hypot(bx-exX,by-exY):0;
   if(found&&jump>Math.max(3,ball.r*0.9))impactCnt++;
-  else if(!found&&dens>0.085)impactCnt++;
+  else if(!found&&dens>0.085){
+    /* v35.5: درایو در ۳۰fps = انفجار یک‌فریمی (توپ + تی ناپدید، dens ناگهانی).
+       دو فریم متوالی لازم‌داشتن ضربه را ۵۰+ فریم دیر می‌کرد. فقط file mode. */
+    if(mode==='file'&&dens>=0.10)impactCnt=2;
+    else impactCnt++;
+  }
   else impactCnt=0;
   /* v35.1: توپِ کند (پات) — در مختصات پایدار، جابه‌جایی پایدار از نقطه‌ی قفل.
      لرزش دوربین در مختصات پایدار حذف است؛ ۵ فریمِ پشت‌سرهم بر آستانه = حرکت واقعی
@@ -1773,10 +1804,15 @@ function trackStep(gray,data,dt){
   let zx=-1,zy=-1;
   if(lostN===0&&detCands.length){
     const candsA=clubShield.active?detCands.filter(c=>!clubShieldBlocks(c.x,c.y)):detCands;
-    const matchA=gvsAssociate(candsA,kf,r2m,9.21);
+    /* v35.5: کاندیدای خیلی‌کوچک‌تر از توپِ قفل‌شده (تی/جرقه) در ویدیو حذف می‌شود */
+    const candsB=mode==='file'?candsA.filter(c=>c.r>=(ball.r||6)*0.5):candsA;
+    const matchA=gvsAssociate(candsB,kf,r2m,9.21);
     if(matchA&&Math.hypot(matchA.x-px,matchA.y-py)<=Math.max(60,Rshield*1.5)){zx=matchA.x;zy=matchA.y;}
   }
-  if(zx<0&&bx>=0&&Math.hypot(bx-px,by-py)<R*1.05&&Math.hypot(bx-px,by-py)<=jumpGuard){zx=bx;zy=by;}
+  if(zx<0&&bx>=0&&Math.hypot(bx-px,by-py)<R*1.05&&Math.hypot(bx-px,by-py)<=jumpGuard){
+    if(mode==='file'&&filledRingR(gray,bx,by,th,(ball.r||6)*0.95+1)<(ball.r||6)*0.5){bx=-1;by=-1;}
+    else {zx=bx;zy=by;}
+  }
   if(zx>=0){
     kfUpdate(kf,zx,zy,r2m);
     /* PATCH 40: هم‌جوشی سرعت — کالمن باید خود توپ را برسد نه پشت سرش بیفتد */
@@ -1815,7 +1851,8 @@ function trackStep(gray,data,dt){
     if(!clubShield.active&&lnE>=1&&lnE<=40&&px>20&&px<AW-20&&py>20&&py<AH-20){
       /* v30: reacquire از لیست کاندیدای تمام‌کادر (دروازه با رشد lostN شل می‌شود) */
       if(detCands.length){
-        const candsR=clubShield.active?detCands.filter(c=>!clubShieldBlocks(c.x,c.y)):detCands;
+        const candsR0=clubShield.active?detCands.filter(c=>!clubShieldBlocks(c.x,c.y)):detCands;
+        const candsR=mode==='file'?candsR0.filter(c=>c.r>=(ball.r||6)*0.5):candsR0;
         const m2=gvsAssociate(candsR,kf,r2m,9.21+lnE*0.9);
         const cap2=Math.min(220,45+lnE*6);
         if(m2&&Math.hypot(m2.x-px,m2.y-py)<=cap2){
@@ -2191,7 +2228,7 @@ function tracePath(s){
 function drawTracer(pts){
   const s=smoothPts(pts,4);
   if(s.length<2)return;
-  const lw=clampN((ball?ball.r:8)*SCX*0.55,4,13);
+  const lw=clampN((ball?ball.r:8)*SCX*(mode==='file'?1.2:0.55),mode==='file'?8:4,mode==='file'?22:13);
   ctx.lineCap='round';ctx.lineJoin='round';
   ctx.strokeStyle=hexA(tracerCol,0.22);ctx.lineWidth=lw*2.6;tracePath(s);ctx.stroke();
   ctx.strokeStyle=hexA(tracerCol,0.45);ctx.lineWidth=lw*1.6;tracePath(s);ctx.stroke();
@@ -2638,15 +2675,6 @@ $('statsClear2').onclick=()=>{if(confirm('همه‌ی ضربه‌های ذخیر
 $('statsExport').onclick=()=>{
   const b=new Blob([JSON.stringify(loadShots(),null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='golf-shots.json';
-  document.body.appendChild(a);a.click();a.remove();
-};
-})();
-
-</script>
-<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{});});}</script>
-</body>
-</html>
-a.href=URL.createObjectURL(b);a.download='golf-shots.json';
   document.body.appendChild(a);a.click();a.remove();
 };
 })();

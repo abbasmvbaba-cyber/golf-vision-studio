@@ -297,3 +297,48 @@ No early lock: the ball accumulates its full frame budget naturally
 | Camera mode | untouched (all changes behind `mode==='file'`; `dr` additive) |
 
 Two-tap force lock (v35.3) remains the guaranteed manual fallback.
+
+## v35.5 — Temporal tracker patch: tee leftover + single-frame drive impact (ثبات شعاع)
+
+Patch only — no rebuild, no UI redesign, camera path byte-identical.
+
+Night driving-range video (`7812815825833274980.mp4`): v35.4 **locked the
+ball** at f13 (314,568) but impact fired **53 frames late** (f181 vs true f129)
+because the **white tee stick** stayed in the local search window after the
+ball left. `found=true` with jump≈0 blocked the swing-burst path
+(`!found && dens>0.085`); the putt-drift path then false-fired at f181.
+
+This is the temporal-tracking failure described in the tracker architecture
+(§13 radius consistency, §16 ball lock, §18 impact, §4 reject tees): the
+detector is not the problem — a stationary white object hijacked the locked
+ball ID.
+
+Fixes (file mode only):
+
+1. **`filledRingR`** — filled-disk radius at a candidate pixel (20 angular
+   samples per ring, stop at first ring with <50% bright). A golf ball is a
+   filled sphere (`sr ≈ r`); a tee is a thin stick (`sr ≈ 1`).
+2. **armedStep** — if `sr < ball.r·0.5`, `found=false` (tee leftover is not
+   the ball). Unblocks swing-burst at the real impact frame.
+3. **Single-frame drive burst** — a 30 fps drive is a **one-frame** event
+   (`dens=0.104` at f129, `0.012` at f130). Requiring two consecutive high-dens
+   frames reset `impactCnt`. File mode: `dens≥0.10 && !found` → `impactCnt=2`.
+4. **trackStep** — drop candidates with `r < 0.5·ball.r`; local-pixel matches
+   must pass `filledRingR` (tee cannot re-steal the track).
+5. **File-mode tracer** slightly thicker (glow closer to broadcast overlays).
+6. Trailing duplicate `</html>` junk removed.
+
+| Test | Result |
+|---|---|
+| harness.js | 28/28 |
+| OLD video (putt) SHAKE_STEP=0 | lock f13 (158,307), impact f68, 96 matched — no regression |
+| PREV video (castle full-shot) | lock f13 (246,575), impact f60, 275 matched — no regression |
+| NIGHT video (tee drive) | lock f13 (314,568)=**ball**, impact **f129** (true strike; was f181) |
+| Camera mode | untouched (`mode==='file'` gates) |
+
+Remaining limitation (architecture §29): this night drive at **30 fps** makes
+the in-flight ball invisible after 1 frame (gone from the tee at f129, no
+stable blob in the 320-wide grid). The tracer after impact is the ballistic
+reconstruction from lock+impact, not a pixel track of a 1-px streak. Higher
+frame-rate cameras (120/240) are required for in-flight pixels on a full
+drive. Putts and slower chips remain pixel-tracked.
