@@ -55,7 +55,7 @@ index.html   ← کل اپ (HTML + CSS + JS در یک فایل)
 
 ## 🎯 نکات استفاده (دقت حداکثری)
 
-- **قفل دستی:** اگر شناسایی خودکار گیر کرد، **روی توپ در تصویر لمس کن** — فوری قفل می‌شود
+- **لمس = راهنما:** یک بار روی توپ بزن تا جستجو در همان ناحیه قوی شود — لمس قفل نمی‌کند. در ویدیو اگر قفل خودکار ننشست، **دو بار** روی همان نقطه = قفل دستی.
 - توپ را در فاصله‌ی ۱ تا ۳ متری دوربین روی زمین بگذار (نه خیلی نزدیک)
 - پس‌زمینه‌ی تاریک‌تر = توپ روشن = ردیابی بی‌نقص (مثل رینگ واقعی)
 - زاویه‌ی دوربین جانبی باشد تا مسیر پرواز در کادر بماند
@@ -342,3 +342,36 @@ stable blob in the 320-wide grid). The tracer after impact is the ballistic
 reconstruction from lock+impact, not a pixel track of a 1-px streak. Higher
 frame-rate cameras (120/240) are required for in-flight pixels on a full
 drive. Putts and slower chips remain pixel-tracked.
+impact lock** worked; post-impact track
+was missing. Also: live camera must use the **same** detector/tracker as
+file/video; tap must **help find**, never lock.
+
+Patch only. The open-source PuttClub tracker zip is used as the **architecture
+of the core** (not a rewrite): every frame `predict → dynamic ROI → score →
+correct or Kalman-coast`. The Python zip itself mis-locks these clips (night
+locks a mid-frame glint, prev locks the club cluster); we keep our lock
+(which is correct on the tee) and port the **temporal** loop.
+
+| Change | Detail |
+|---|---|
+| `scanFlightCands` | Permissive in-flight detector in the predicted ROI (elongation ≤3.6, r≥1, motion-blur OK). Tracker scores (pred + newness + radius + appearance); detector does not hard-reject. |
+| Kalman coast | Unmatched frames **keep predicted points on the trail** (zip: do not drop the track). `obs` stays measurement-only (no fake physics in the fit). |
+| `seedLaunchVel` | If the ball vanishes from rest in the lower frame (drive), seed a modest upward image velocity so the coast leaves the tee. Not a calibrated 3D launch. |
+| Launch leftover | After impact, reject tee-zone / below-tee / upper-frame floodlight blobs (`filledRingR` both modes, static-bright veto, y/AH<0.40 skip, jump cap ≤70px). |
+| Live = file | `scanBallCands` bottom-bias + sky penalty, `scanWhiteDots`, lock selection (sky / dark-surround / rigidity), `filledRingR`, single-frame dens burst, thicker tracer — **camera and video**. `alignPrev` stays file-only (handheld optical flow). |
+| Tap = hint | `tapAssist` never calls `lockBallAt` on a single tap. Two-tap in file/detect remains the last-resort manual lock. |
+| Close ball | `r` max 45→70 so a sofa-distance ball can lock on live camera. |
+
+| Test | Result |
+|---|---|
+| harness.js | 28/28 |
+| Syntax (extracted app script) | OK |
+| OLD putt | lock f13 (158,307)=ball |
+| PREV full-shot | lock f15 (244,577), impact f56, predicted trail continues |
+| NIGHT tee drive | lock f13 (314.5,568.8)=**ball**, impact **f129**, **0** in-flight pixel matches (honest), **91** Kalman-coast trail points going **up** the range |
+
+Remaining limits: a 30 fps full drive has **no in-flight pixels** after the
+strike frame — the red tracer is the Kalman prediction from lock+impact, not
+a tracked streak. Higher FPS (120/240) is required to score real flight
+blobs. PREV lock is still on the ball/club cluster (they merge at 320-wide).
+Do not treat the coast heading as a measured launch angle.
