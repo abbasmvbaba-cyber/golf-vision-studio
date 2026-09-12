@@ -187,3 +187,41 @@ MIT — آزاد برای استفاده، تغییر و انتشار.
 - بدون لرزش: قفل فریم ۱۳، ضربه فریم ۶۸ (۶ فریم پس از ضربه‌ی واقعی ۶۲)، ۹۶ فریم تطبیق — ۳/۳.
 - لرزش خفیف (شبیه دستِ واقعی): ۰ هشدار کاذب در ۸/۸ اجرا؛ ضربه در پنجره‌ی درست (۵۸–۶۸) یا کمی دیرتر در ۵/۸.
 - لرزش شدید (استرس): قفل همیشه؛ تریگر گاه کاذب/دیر — محدودیتِ شناخته‌شده برای صحنه‌های کم‌کُنتراست (توپِ سفید کوچک روی چمنِ آفتاب‌گرفته).
+
+---
+
+## v35.2 — File-mode restructure + one-tap full-video export (ساختار ویدیو + خروجی)
+
+File mode (ویدیوی ذخیره‌شده) reworked per request: **no shutter button** — instead
+the video toolbar now has **play/pause**, restart, seek, and a new **export**
+button that renders and saves the **entire uploaded video** with everything
+burned in:
+
+- the **ball trail / trajectory** in the user's chosen **tracer color**
+  (TRACER COLOR setting — `tracerCol`);
+- the **PuttClub logo watermark** (already drawn on every frame in file mode);
+- the **final info card** (PUTTCLUB VISION + speed/carry/apex/… + PuttClub.ir)
+  appended after the shot — the rest of the video keeps playing underneath the
+  card so nothing is cut, then ~5s of card, then the file is finalized.
+
+### How it works (reuses the camera-mode record chain)
+`startFileExport()` = `resetShot()` + seek(0) + `startRec()` (canvas
+`captureStream(60)` + MediaRecorder, 12 Mbps, mp4-preferred, **no mic track in
+file mode**) + `vid.play()`. The normal detect→lock→impact→track pipeline runs
+on the replayed video; `finishShot()` (on stop / out-of-frame / `ended`) draws
+the end card onto the canvas; `finalizeRec()` now **waits for `vid.ended` in
+file mode** before stopping the recorder, and then auto-offers save
+(`navigator.share` sheet on iOS / download elsewhere). No-shot case: a simple
+"NO SHOT DETECTED" card. Re-tap export = cancel. Seek/restart/play are locked
+while building; the canvas freezes on the card after export.
+
+### Tests
+| Suite | Result |
+|---|---|
+| Syntax (node --check, all scripts) | OK |
+| harness.js | 28/28 PASS |
+| Shake E2E (clean, ×3) | 5/5 PASS each (lock f13, impact f68, 96 matched) |
+| File-mode E2E (no shake) | lock f19, impact f62, 102 matched |
+
+MediaRecorder/export path is browser-only — verify on device (iOS Safari
+14.5+).

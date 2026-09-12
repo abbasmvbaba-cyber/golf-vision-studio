@@ -177,6 +177,12 @@ input[type=file]{display:none}
 .ar-vidbar input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:rgba(127,224,176,.35);outline:none;cursor:pointer}
 .ar-vidbar input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:#7fe0b0;border:none;box-shadow:0 0 6px rgba(127,224,176,.6)}
 .ar-vidbar .vidtime{font:600 10.5px Menlo,monospace;color:#9fd8bd;white-space:nowrap;letter-spacing:.4px}
+/* v35.2: بدون شاتر در حالت ویدیو + دکمه‌های پخش/خروجی */
+#arOverlay.vidmode .ar-shutter{display:none}
+.ar-vidbar .vidbtn-export{background:rgba(255,180,64,.16);color:#ffb440}
+.ar-vidbar .vidbtn-export:active{background:rgba(255,180,64,.34)}
+.ar-vidbar .vidbtn-export.busy{background:rgba(255,69,69,.18);color:#ff4545;animation:arblink 1.2s infinite}
+.ar-vidbar :disabled{opacity:.35;pointer-events:none}
 .ar-thumb.pulse{animation:thumbPulse 1.1s ease-in-out infinite}
 @keyframes thumbPulse{0%,100%{box-shadow:0 0 0 2px rgba(127,224,176,.9)}50%{box-shadow:0 0 0 8px rgba(127,224,176,0)}}
 .ar-thumb{position:absolute;bottom:calc(34px + env(safe-area-inset-bottom));left:calc(20px + env(safe-area-inset-left));width:54px;height:54px;border-radius:12px;border:2px solid rgba(255,255,255,.7);background:#111 center/cover no-repeat;cursor:pointer;z-index:3;display:none}
@@ -280,6 +286,8 @@ input[type=file]{display:none}
   <circle cx="9.1" cy="15.5" r="1.7"/>
   <path d="M9.7 13.7c2.4-4 5.4-5.6 8.2-5.4" stroke-dasharray="1.7 2.1"/>
 </symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M8.2 5.6l10.6 6.4L8.2 18.4z"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5.8v12.4M15 5.8v12.4"/></symbol>
 </svg>
 
 <!-- ============ اپ دوربین تمام‌صفحه (iOS-style) ============ -->
@@ -318,9 +326,11 @@ input[type=file]{display:none}
   <!-- v35: ویدیوی ذخیره‌شده — انتخاب فایل + نوار کنترل -->
   <input type="file" id="arFileIn" accept="video/*,.mp4,.mov,.m4v,.webm">
   <div id="arVidBar" class="ar-vidbar">
+    <button id="vidPP" class="vidbtn" title="پخش/توقف"><svg class="icn" viewBox="0 0 24 24"><use id="vidPPuse" href="#i-pause"/></svg></button>
     <button id="vidRestart" class="vidbtn" title="از ابتدا"><svg class="icn" viewBox="0 0 24 24"><use href="#i-restart"/></svg></button>
     <input type="range" id="vidSeek" min="0" max="1000" value="0" step="1">
     <span id="vidTime" class="vidtime">0:00 / 0:00</span>
+    <button id="vidExport" class="vidbtn vidbtn-export" title="خروجی: کل ویدیو + خط پرتاب (رنگ انتخابی) + لوگو + کارت نتیجه"><svg class="icn" viewBox="0 0 24 24"><use href="#i-dl"/></svg></button>
   </div>
 </div>
 
@@ -606,11 +616,16 @@ let fileUrl=null;
 function fmtVidT(t){t=Math.max(0,t|0);return (t/60|0)+':'+String(t%60).padStart(2,'0');}
 function vidToggle(){
   if(mode!=='file')return;
+  if(exportOn)return; /* در حین ساختِ خروجی، کنترل پخش قفل است */
   beep(vid.paused?1150:850);
   if(vid.paused){vid.play().catch(()=>{});}else{vid.pause();}
 }
+function syncVidPP(){try{$('vidPPuse').setAttribute('href',vid.paused?'#i-play':'#i-pause');}catch(e){}}
+vid.addEventListener('play',syncVidPP);
+vid.addEventListener('pause',syncVidPP);
 function vidRestart(){
   if(mode!=='file')return;
+  if(exportOn)return;
   beep(700);
   vid.currentTime=0;
   vid.play().catch(()=>{});
@@ -644,6 +659,10 @@ async function startFile(f){
   lastLockR=0;ballDet.lastR=0; /* v35.1: نگهبان اندازه‌ی قفلِ قبلیِ دوربین نباید ویدیو را محدود کند */
   mode='file';
   setPhase('detect');
+  exportOn=false; /* v35.2: هر ویدیوی تازه = حالت خروجی تازه */
+  try{$('vidExport').classList.remove('busy');$('vidSeek').disabled=false;}catch(e){}
+  $('arOverlay').classList.add('vidmode'); /* v35.2: شاتر در ویدیو غیرفعال */
+  syncVidPP();
   $('arVidBar').classList.add('on');
   $('arFlip').style.display='none';
   $('vidSeek').value=0;
@@ -657,6 +676,10 @@ function stopFile(){
   const bar=$('arVidBar');if(bar)bar.classList.remove('on');
   const fl=$('arFlip');if(fl)fl.style.display='';
   $('arShutter').classList.remove('rec','done');
+  /* v35.2: بازگشت از ویدیو — شاتر برمی‌گردد + اگر خروجی در حال ساخت بود، لغو */
+  try{$('arOverlay').classList.remove('vidmode');}catch(e){}
+  if(exportOn){exportOn=false;stopRec();
+    try{$('vidExport').classList.remove('busy');$('vidSeek').disabled=false;}catch(e){}}
 }
 $('arFileBtn').onclick=()=>{beep(720);$('arFileIn').click();};
 $('arFileIn').onchange=function(){
@@ -670,6 +693,7 @@ $('arFileIn').onchange=function(){
 $('vidRestart').onclick=vidRestart;
 $('vidSeek').addEventListener('input',function(){
   if(mode!=='file')return;
+  if(exportOn)return; /* v35.2: حین ساختِ خروجی، اسکرول ممنوع */
   if(vid.duration&&isFinite(vid.duration)&&vid.duration>0){
     vid.currentTime=(this.value/1000)*vid.duration;
     /* اسکرول وسطِ تحلیل → بازگشت به detect تا از همین فریم قفل شود */
@@ -680,8 +704,52 @@ $('vidSeek').addEventListener('input',function(){
   }
 });
 vid.addEventListener('ended',()=>{
-  if(mode==='file'&&phase!=='done')toast('پایان ویدیو — برای دوباره، ↺ را بزن',2800);
+  if(mode!=='file')return;
+  if(exportOn){ /* v35.2: پایان ویدیو در حین خروجی → بستن با کارت نتیجه */
+    if(phase==='track')finishShot(null,'user-stop');
+    else if(phase!=='done'){
+      /* ضربه‌ای تشخیص داده نشده — خروجی با کارتِ ساده بسته می‌شود */
+      lastCardRows=[['BALL SPEED','—',''],['CARRY DISTANCE','—',''],['NOTE','NO SHOT DETECTED','']];lastCardLost=true;
+      setPhase('done');
+      drawEndCard(lastCardRows,true);
+      if(endTimer)clearTimeout(endTimer);
+      endTimer=setTimeout(finalizeRec,5000);
+    }else{
+      /* کارتِ نتیجه پیش‌تر نشان داده شده — فقط نهایی‌سازی */
+      if(endTimer)clearTimeout(endTimer);
+      endTimer=setTimeout(finalizeRec,5000);
+    }
+    return;
+  }
+  if(phase!=='done')toast('پایان ویدیو — برای دوباره، ↺ را بزن',2800);
 });
+/* v35.2: خروجیِ کامل — کلِ فیلم + خط پرتاب/ردِ توپ (رنگ تِرَسرِ انتخابی) + لوگو
+   (واترمارکِ هر فریم) + کارتِ اطلاعاتِ پایانی، ثبت روی بوم با MediaRecorder.
+   ساختار: reset + seek(0) + startRec + play → موتورِ عادی قفل/ضربه/ردیابی را
+   پخش می‌کند و در پایان (ended یا توقف توپ) کارتِ نتیجه روی بوم ثبت می‌شود. */
+let exportOn=false;
+function startFileExport(){
+  if(mode!=='file'||!fileUrl)return;
+  if(exportOn){ /* لمسِ دوباره = لغو */
+    exportOn=false;stopRec();vid.pause();
+    try{$('vidExport').classList.remove('busy');$('vidSeek').disabled=false;}catch(e){}
+    resetShot();
+    toast('خروجی لغو شد',2000);
+    return;
+  }
+  if(!window.MediaRecorder){toast('خروجی ویدیو در این مرورگر پشتیبانی نمی‌شود',3200);return;}
+  exportOn=true;
+  try{$('vidExport').classList.add('busy');$('vidSeek').disabled=true;$('vidRestart').disabled=true;}catch(e){}
+  resetShot();
+  /* قفلِ چسبانِ شاتِ قبلی نباید وسطِ بازپخش توپِ کهنه قفل کند */
+  sticky=null;if(stickyTimer){clearTimeout(stickyTimer);stickyTimer=null;}
+  vid.currentTime=0;
+  startRec();
+  vid.play().catch(()=>{toast('پخش ویدیو برای خروجی ممکن نشد',2600);});
+  toast('در حال ساخت ویدیوی خروجی — تا پایان فیلم صبر کن… لمسِ دوباره = لغو',3600);
+}
+$('vidExport').onclick=startFileExport;
+$('vidPP').onclick=vidToggle;
 vid.addEventListener('error',()=>{
   if(mode!=='file'||!fileUrl)return;
   const c=vid.error?vid.error.code:0;
@@ -1778,12 +1846,14 @@ function finishShot(el,reason){
   if(clipUrl)html+='<a class="ar-icbtn" style="margin-top:8px" href="'+clipUrl+'" download="puttclub-shot.'+(recMime.indexOf('mp4')>=0?'mp4':'webm')+'"><svg class="icn" viewBox="0 0 24 24"><use href="#i-dl"/></svg></a>';
   html+='<div class="site">PuttClub.ir</div>';
   /* کارت روی بوم → داخل ویدیو ثبت می‌شود؛ ضبط ۵ثانیه دیگر ادامه دارد */
+  lastCardRows=rows;lastCardLost=(reason==='lost');
   drawEndCard(rows,reason==='lost');
   cardHtml=html;
   endTimer=setTimeout(finalizeRec,5000);}
 
 /* کارت نتیجه روی بوم (ثبت‌شونده در ویدیو) + نهایی‌سازی تاخیری ضبط */
 let endTimer=null,cardHtml=null;
+let lastCardRows=null,lastCardLost=false; /* v35.2: برای بازنقاشیِ کارت روی دمِ ویدیو در خروجی */
 function rrPath(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
 function drawEndCard(rows,lost){
   try{
@@ -1829,7 +1899,16 @@ function drawEndCard(rows,lost){
   }catch(e){}
 }
 function finalizeRec(){
+  /* v35.2: خروجیِ ویدیو — تا پایانِ فیلم ضبط ادامه دارد (کارتِ نتیجه می‌تواند
+     وسطِ فیلم بیاید؛ بقیه‌ی فیلم هم باید در خروجی باشد) */
+  if(mode==='file'&&exportOn&&vid.readyState>=2&&!vid.ended){
+    endTimer=setTimeout(finalizeRec,800);
+    return;
+  }
   stopRec();
+  /* v35.2: پایانِ ساختِ خروجی — کنترل‌های ویدیو آزاد می‌شوند */
+  exportOn=false;
+  try{$('vidExport').classList.remove('busy');$('vidSeek').disabled=false;$('vidRestart').disabled=false;}catch(e){}
   let poster=null;try{poster=cv.toDataURL('image/jpeg',0.92);}catch(e){}
   lastMedia={url:clipUrl||null,poster:poster,name:'puttclub-shot.'+(recMime.indexOf('mp4')>=0?'mp4':'webm')};
   lastSaved=false;
@@ -1860,7 +1939,8 @@ function startRec(){
   clipUrl=null;chunks=[];recMime='';
   try{
     const stream=cv.captureStream(60);
-    const at=micAudioTrack();if(at)stream.addTrack(at);
+    const at=mode==='cam'?micAudioTrack():null; /* v35.2: خروجیِ ویدیو بدون میکروفون (خودِ فایل پخش می‌شود) */
+    if(at)stream.addTrack(at);
     const mimes=['video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
     for(const m of mimes){if(window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(m)){recMime=m;break;}}
     const opts=recMime?{mimeType:recMime,videoBitsPerSecond:12000000}:{videoBitsPerSecond:12000000};
@@ -2184,7 +2264,11 @@ function loop(ts){
   requestAnimationFrame(loop);
   if(!$('arOverlay').classList.contains('on'))return;
   const dt=lastTs?Math.min(0.05,(ts-lastTs)/1000):0.016;lastTs=ts;
-  if(phase==='done'){updPanels(dt);return;} /* فریز آخرین فریم ضربه پشت کارت نتیجه */
+  if(phase==='done'){
+    /* v35.2: خروجیِ ویدیو — بعد از کارتِ نتیجه، بقیه‌ی فیلم هنوز روی بوم پخش می‌شود
+       (کارت روی آن نگه داشته می‌شود) تا کلِ فیلم در خروجی بماند */
+    if(!(mode==='file'&&exportOn&&vid.readyState>=2&&!vid.ended)){updPanels(dt);return;}
+  }
   ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
   let ready=false;
   if((mode==='cam'||mode==='file')&&vid.readyState>=2){ /* v35: file = ویدیوی ذخیره‌شده */
@@ -2276,6 +2360,7 @@ function loop(ts){
   else if(phase==='armed'&&ball)armedStep(gray,data,dt);
   else if(phase==='track'&&ball)trackStep(gray,data,dt);
   drawHud();
+  if(phase==='done'&&exportOn&&lastCardRows)drawEndCard(lastCardRows,lastCardLost); /* v35.2: کارت روی دمِ ویدیو */
   updPanels(dt);
 }
 requestAnimationFrame(loop);
