@@ -21,15 +21,15 @@ body{margin:0;font-family:Vazirmatn,Tahoma,"Segoe UI",sans-serif;background:#0b1
 a{color:#39d98a}
 /* ===== HERO ===== */
 #hero{position:relative;min-height:78vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden;border-bottom:1px solid #1f2e27}
-#heroBg{position:absolute;inset:0;background:url("hero.png") center/cover no-repeat;filter:saturate(1.05)}
+#heroBg{position:absolute;inset:0;background:url("hero.png") center/cover no-repeat;filter:saturate(1.05);pointer-events:none;z-index:0}
 #heroBg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(5,10,8,.55),rgba(5,10,8,.25) 40%,rgba(11,18,16,.96) 92%,#0b1210)}
-.heroIn{position:relative;z-index:1;padding:64px 20px 40px;max-width:680px}
+.heroIn{position:relative;z-index:2;padding:64px 20px 40px;max-width:680px}
 .heroBrand{width:104px;height:104px;border-radius:26px;box-shadow:0 18px 50px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.09);margin:0 auto 20px;display:block}
 #hero h1{margin:0;font-size:clamp(26px,5.5vw,40px);font-weight:800;letter-spacing:-.5px;text-shadow:0 2px 24px rgba(0,0,0,.6)}
 #hero .en{font-family:Menlo,monospace;font-size:11.5px;letter-spacing:5px;color:#9fe3c0;margin-top:10px}
 #hero .sub{color:#d7e6de;font-size:14.5px;line-height:2.2;margin:16px auto 26px;max-width:520px;text-shadow:0 1px 14px rgba(0,0,0,.7)}
 .heroBtns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-.heroLogoBtn{background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:14px;margin:0 auto 6px;padding:0;-webkit-tap-highlight-color:transparent}
+.heroLogoBtn{background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:14px;margin:0 auto 6px;padding:28px 36px 16px;position:relative;z-index:3;-webkit-tap-highlight-color:rgba(127,224,176,.35);touch-action:manipulation}
 .heroLogoBtn .heroBrand{width:150px;height:150px;border-radius:32px;box-shadow:0 22px 60px rgba(0,0,0,.65),0 0 0 1px rgba(255,255,255,.10);margin:0;transition:transform .25s;animation:heroPulse 2.6s ease-in-out infinite}
 .heroLogoBtn:active .heroBrand{transform:scale(.95)}
 @keyframes heroPulse{0%,100%{box-shadow:0 22px 60px rgba(0,0,0,.65),0 0 0 1px rgba(255,255,255,.10),0 0 0 0 rgba(127,224,176,.28)}50%{box-shadow:0 22px 60px rgba(0,0,0,.65),0 0 0 1px rgba(255,255,255,.10),0 0 0 16px rgba(127,224,176,0)}}
@@ -201,15 +201,13 @@ input[type=file]{display:none}
 <section id="hero">
   <div id="heroBg"></div>
   <div class="heroIn">
-    <button id="btnAR" class="heroLogoBtn" aria-label="باز کردن PuttClub Vision">
+    <button id="btnAR" type="button" class="heroLogoBtn" aria-label="باز کردن PuttClub Vision" onclick="document.getElementById('arOverlay').classList.add('on');if(window.__gvsLaunchFull)window.__gvsLaunchFull();">
       <img class="heroBrand" src="appicon.png" alt="PuttClub Vision"/>
       <span class="heroTap">TAP TO LAUNCH</span>
     </button>
     <h1>PuttClub Vision</h1>
   </div>
 </section>
-
-</div>
 </header>
 
 <!-- ===== تاریخچه‌ی ضربه‌ها ===== -->
@@ -294,7 +292,7 @@ input[type=file]{display:none}
 <div id="arOverlay">
   <video id="arVideo" playsinline muted></video>
   <div class="ar-stage"><canvas id="arCanvas" width="960" height="540"></canvas></div>
-  <button id="arClose" class="ar-close"><svg class="icn" viewBox="0 0 24 24"><use href="#i-x"/></svg></button>
+  <button id="arClose" class="ar-close" type="button" onclick="document.getElementById('arOverlay').classList.remove('on')"><svg class="icn" viewBox="0 0 24 24"><use href="#i-x"/></svg></button>
   <div class="ar-topright">
     <span id="arStRec" class="ar-dot"></span>
     <button id="arFileBtn" class="ar-chipic" title="ویدیوی ذخیره‌شده"><svg class="icn" viewBox="0 0 24 24"><use href="#i-film"/></svg></button>
@@ -336,6 +334,13 @@ input[type=file]{display:none}
 
 <div id="toast" class="toast"></div>
 
+<script>
+/* باز کردن overlay مستقل از اسکریپت اصلی — اگر IIFE بترکد، لوگو باز هم صفحهٔ سیاه را باز می‌کند */
+window.__gvsLaunchFull=window.__gvsLaunchFull||function(){
+  var o=document.getElementById('arOverlay');
+  if(o)o.classList.add('on');
+};
+</script>
 <script src="math-core.js"></script>
 <script>
 "use strict";
@@ -343,6 +348,7 @@ input[type=file]{display:none}
 /* شناسایی توپ: هسته‌ی روشن + حلقه‌ی تیره‌تر | کلاب: ناحیه‌ی حرکت | مسافت: کالیبراسیون قطر توپ 42.67mm */
 (function(){
 const $=id=>document.getElementById(id);
+let mode='none',stream=null,facing='environment';
 let toastTimer=null;
 function toast(msg,ms){const t=$('toast');if(!t)return;t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),ms||4200);}
 const faNum=s=>String(s).replace(/\d/g,d=>'۰۱۲۳۴۵۶۷۸۹'[d]);
@@ -371,8 +377,8 @@ function layoutDetect(){
 }
 function fitCanvas(){
   /* v37: حالت ویدیو = بوم استوری اینستاگرام ۹:۱۶ با کیفیت خروجی
-     mode ممکن است هنوز declare نشده باشد (TDZ) — بدون این چک کل اسکریپت می‌ترکد و TAP TO LAUNCH کار نمی‌کند */
-  if(typeof mode!=='undefined'&&mode==='file'){cv.width=1080;cv.height=1920;layoutDetect();return;}
+     mode باید بالاتر از این تابع declare شده باشد — typeof روی let در TDZ باز هم ReferenceError می‌دهد */
+  if(mode==='file'){cv.width=1080;cv.height=1920;layoutDetect();return;}
   const w=Math.max(1,window.innerWidth),h=Math.max(1,window.innerHeight);
   const k=clampN(Math.min(2,Math.max(0.5,1080/Math.max(w,h))),0.4,2);
   cv.width=Math.round(w*k);cv.height=Math.round(h*k);
@@ -402,7 +408,6 @@ function drawWM(){
   ctx.fillText('PuttClub.ir  ·  PUTTCLUB VISION',cv.width/2,y+s*1.55);
   ctx.restore();
 }
-let mode='none',stream=null,facing='environment';
 let demo=null,demoT=0;
 let phase='off'; /* off | detect | armed | track | done */
 let ball=null,ballStable=0,prevCand=null,pxPerMeter=80;
@@ -811,26 +816,32 @@ function resetShot(){
   detCands=[];liveArc=null;stTracks=[];autoCooldownUntil=performance.now()+1200;tapHint=null;calib3D=null;fit3Dlive=null;tHit3D=null;
   setPhase('detect');
 }
-let wakeLock=null,camDenied=false;
-$('btnAR').onclick=async()=>{
-  $('arOverlay').classList.add('on');
-  fitCanvas();
-  try{(function(){
-    const st=(navigator.standalone===true)||(window.matchMedia&&(matchMedia('(display-mode: standalone)').matches||matchMedia('(display-mode: fullscreen)').matches));
-    if(st)return; /* نصب‌شده از Home Screen — هیچ راهنمایی لازم نیست */
-    const ios=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-    if(!ios)return;
-    let n=0;try{n=parseInt(localStorage.getItem('golftar_a2hs')||'0')||0;}catch(e){}
-    n++;try{localStorage.setItem('golftar_a2hs',String(n));}catch(e){}
-    if(n===1||n===4||n%10===0)toast('تمام‌صفحهٔ واقعی: در سافاری Share ← Add to Home Screen',5200);
-  })();}catch(e){}
-  try{if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();}catch(e){}
-  try{if(screen.orientation&&screen.orientation.lock)await screen.orientation.lock('portrait');}catch(e){}
-  try{wakeLock=await navigator.wakeLock.request('screen');}catch(e){}
-  /* دوربین همین لحظه که اپ باز می‌شود روشن می‌شود — نه با شاتر */
-  if(mode==='none'){
-    if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)startCam();
-    else startDemo();
+let wakeLock=null,camDenied=false,launchBusy=false;
+window.__gvsLaunchFull=async function(){
+  try{$('arOverlay').classList.add('on');}catch(e){}
+  if(launchBusy)return;
+  launchBusy=true;
+  try{
+    fitCanvas();
+    try{(function(){
+      const st=(navigator.standalone===true)||(window.matchMedia&&(matchMedia('(display-mode: standalone)').matches||matchMedia('(display-mode: fullscreen)').matches));
+      if(st)return; /* نصب‌شده از Home Screen — هیچ راهنمایی لازم نیست */
+      const ios=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+      if(!ios)return;
+      let n=0;try{n=parseInt(localStorage.getItem('golftar_a2hs')||'0')||0;}catch(e){}
+      n++;try{localStorage.setItem('golftar_a2hs',String(n));}catch(e){}
+      if(n===1||n===4||n%10===0)toast('تمام‌صفحهٔ واقعی: در سافاری Share ← Add to Home Screen',5200);
+    })();}catch(e){}
+    try{if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();}catch(e){}
+    try{if(screen.orientation&&screen.orientation.lock)await screen.orientation.lock('portrait');}catch(e){}
+    try{wakeLock=await navigator.wakeLock.request('screen');}catch(e){}
+    /* دوربین همین لحظه که اپ باز می‌شود روشن می‌شود — نه با شاتر */
+    if(mode==='none'){
+      if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)startCam();
+      else startDemo();
+    }
+  }finally{
+    setTimeout(function(){launchBusy=false;},800);
   }
 };
 $('arClose').onclick=()=>{$('arOverlay').classList.remove('on');stopAll();phase='off';
@@ -2827,8 +2838,4 @@ $('statsExport').onclick=()=>{
 </script>
 <script>if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{});});}</script>
 </body>
-</html>
-</html>
-
-</html>
 </html>
