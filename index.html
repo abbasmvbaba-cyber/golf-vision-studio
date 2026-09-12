@@ -370,8 +370,9 @@ function layoutDetect(){
   prevGray=null;
 }
 function fitCanvas(){
-  /* v37: حالت ویدیو = بوم استوری اینستاگرام ۹:۱۶ با کیفیت خروجی */
-  if(mode==='file'){cv.width=1080;cv.height=1920;layoutDetect();return;}
+  /* v37: حالت ویدیو = بوم استوری اینستاگرام ۹:۱۶ با کیفیت خروجی
+     mode ممکن است هنوز declare نشده باشد (TDZ) — بدون این چک کل اسکریپت می‌ترکد و TAP TO LAUNCH کار نمی‌کند */
+  if(typeof mode!=='undefined'&&mode==='file'){cv.width=1080;cv.height=1920;layoutDetect();return;}
   const w=Math.max(1,window.innerWidth),h=Math.max(1,window.innerHeight);
   const k=clampN(Math.min(2,Math.max(0.5,1080/Math.max(w,h))),0.4,2);
   cv.width=Math.round(w*k);cv.height=Math.round(h*k);
