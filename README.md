@@ -366,3 +366,37 @@ Product focus: marketing clip, not launch-monitor numbers.
 File mode canvas is **1080×1920**. Tracer is broadcast-style glow + hot core.
 Drive impact always draws the reconstructed arc; tap landing to aim it.
 Export bitrate 16 Mbps. Fake live-yardage pill hidden on reconstructed drives.
+
+## v38 — Scene Scan: اسکن صحنه/عمق ویدیو پیش از ردیابی (دوربین ثابت)
+
+User request: in upload-video mode, **first** scan the opening shot — image + depth,
+distances, separate layers like video games — and **only then** find the ball's motion,
+given the camera is fixed.
+
+New `scan` phase runs automatically right after a video is picked (before any
+detect/lock/export):
+
+| Step | What happens |
+|---|---|
+| 1. Collect | First ~22 unique frames (≈1s of still scene) are buffered while a game-style `SCANNING SCENE %` overlay sweeps the frame |
+| 2. Background | Per-pixel temporal **median** = clean background (player/club motion rejected). ±1px shift-tolerant compare absorbs tiny shake |
+| 3. Horizon | First row where grass-green is stable top→bottom (default 30% if not found) |
+| 4. Depth | Pinhole + ground-plane geometry from the horizon (`GVS.depthGeomFromHorizon`): per-row distance `groundDist(v)` and per-row scale `ppmRow(v)` → full `ppmMap` |
+| 5. Layers | 5 game-style bands drawn on the frame with live distances: `SKY · FAR · MID · NEAR · TEE` + dashed horizon line |
+| 6. Ball hint | Best ball candidate under the horizon becomes an auto guide (fast-lock region, like a tap) with `BALL ≈ X YD` |
+| 7. Go | Phase → `detect`, export auto-starts; layers stay visible ~3s (burned into the output clip) |
+
+How the scan fixes the old failure modes (file mode only — camera path untouched):
+
+- **Tee leftover stealing impact/track (v35.5):** the tee is static background now — impact fires from the **background hole** (bright ball pixels turning to grass, >35% of the ball disc), and every track match must be **foreground** (`isForeground`, 5×5 window + inter-frame), so the tee can never re-steal the ID.
+- **Floodlights / castle windows / white gloves:** above-horizon veto + static-background penalty in detect scoring; in-flight candidates must be foreground.
+- **Wrong distances as the ball flies away:** live distance is now a **depth integral** (each trail segment ÷ its own row's ppm) instead of one global scale; ball size at lock refines the whole depth map (`refineDepthWithBall`, via `calib3D` pose or ball-diameter rescale).
+- **Slow putts:** 5×5 foreground window catches 1–2px/frame rolls that single-pixel checks miss.
+
+| Test | Result |
+|---|---|
+| Syntax (all inline scripts + math-core) | OK |
+| harness.js | 31/31 (new T29–T31: groundDist round-trip vs `project`, ppm ordering/map, invalid inputs) |
+| Camera mode | untouched (every v38 gate is `mode==='file' && bgReady`) |
+
+SW cache `golf-ar-v43`.

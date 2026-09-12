@@ -494,7 +494,51 @@ function findImpactTime(obs){
   return null;
 }
 
+/* ================= v38: عمق/لایه‌ی صحنه (دوربین ثابت) =================
+   هندسه‌ی pinhole + صفحه‌ی زمین. G={f,fy,cx,cy,theta,h}.
+   قراردادها مثل project/calibBallPose: محور y تصویر رو به پایین است.
+   از روی سطر افق (v_horizon): tan(theta)=(cy-vh)/fy. فاصله‌ی افقی نقطه‌ی
+   زمینِ دیده‌شده در سطر v از رابطه‌ی معکوس project می‌آید:
+     k=(v-cy)/fy ⇒ D = h·(c-k·s)/(k·c+s) ، بالای افق (مخرج≤۰) = بی‌نهایت */
+function depthGeomFromHorizon(f,fy,cx,cy,horizonV,h){
+  if(!(f>10&&fy>10))return null;
+  const hh=(h&&isFinite(h)&&h>0.2&&h<3)?h:1.15;
+  const th=Math.atan((cy-horizonV)/fy);
+  const thc=Math.max(0.02,Math.min(1.1,th));
+  if(!isFinite(thc))return null;
+  return{f:f,fy:fy,cx:cx,cy:cy,theta:thc,h:hh};
+}
+/* فاصله‌ی افقی (متر) نقطه‌ی زمین در سطر v — بالای افق = Infinity */
+function groundDist(v,G){
+  if(!G)return Infinity;
+  const k=(v-G.cy)/G.fy;
+  const c=Math.cos(G.theta),s=Math.sin(G.theta);
+  const den=k*c+s;
+  if(!(den>1e-6))return Infinity;
+  const D=G.h*(c-k*s)/den;
+  if(!isFinite(D)||D<0)return Infinity;
+  return D;
+}
+/* پیکسل‌برمتر جانبی در سطر v (از عمق نوری Z=D·c+h·s) */
+function ppmRow(v,G){
+  if(!G)return 0;
+  const D=groundDist(v,G);
+  if(!isFinite(D))return 0;
+  const c=Math.cos(G.theta),s=Math.sin(G.theta);
+  const Z=D*c+G.h*s;
+  if(!(Z>0.05))return 0;
+  return G.f/Z;
+}
+/* نگاشت سطری ppm برای کل قاب؛ سطرهای بالای افق = امتداد نزدیک‌ترین سطر معتبر */
+function buildPpmMap(AH,G){
+  const m=new Array(AH);
+  for(let y=0;y<AH;y++){const p=ppmRow(y+0.5,G);m[y]=(p>0.5&&p<20000)?p:0;}
+  let first=-1;for(let y=0;y<AH;y++){if(m[y]>0){first=y;break;}}
+  if(first>0){for(let y=0;y<first;y++)m[y]=m[first];}
+  return m;
+}
+
 return {PHYS:PHYS,YD:YD,MPH:MPH,simCarry:simCarry,det3:det3,quadFit:quadFit,
   makeKF:makeKF,kfPredict:kfPredict,kfUpdate:kfUpdate,
-  associate:associate,ballisticStep:ballisticStep,liveFit:liveFit,predictArc:predictArc,autoLockStep:autoLockStep,autoLockMulti:autoLockMulti,project:project,calibBallPose:calibBallPose,simCarry3D:simCarry3D,fit3D:fit3D,findImpactTime:findImpactTime};
+  associate:associate,ballisticStep:ballisticStep,liveFit:liveFit,predictArc:predictArc,autoLockStep:autoLockStep,autoLockMulti:autoLockMulti,project:project,calibBallPose:calibBallPose,simCarry3D:simCarry3D,fit3D:fit3D,findImpactTime:findImpactTime,depthGeomFromHorizon:depthGeomFromHorizon,groundDist:groundDist,ppmRow:ppmRow,buildPpmMap:buildPpmMap};
 });

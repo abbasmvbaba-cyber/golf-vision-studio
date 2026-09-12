@@ -412,6 +412,41 @@ T('T28','v35.1 file mode: autoLockMulti loose survives 3 dropped frames (video c
   ok(strictLock===null,'strict must NOT lock after a 3-frame drop (camera path changed!)');
 });
 
+/* T29 — v38: groundDist رفت‌وبرگشت با project (نقطه‌ی زمین → سطر → فاصله) */
+T('T29','v38 groundDist round-trips project() on ground points',function(){
+  const f=800,fy=800,cx=160,cy=300,theta=0.35,h=1.15,d=2.2;
+  const G={f:f,fy:fy,cx:cx,cy:cy,theta:theta,h:h};
+  const cam={f:f,fy:fy,cx:cx,cy:cy,theta:theta,h:h,d:d,C:[0,-d,h]};
+  const Ys=[0,2,6,15,40];
+  for(let k=0;k<Ys.length;k++){
+    const pr=GVS.project(cam,[0,Ys[k],0]);
+    ok(pr,'project null for Y='+Ys[k]);
+    const D=GVS.groundDist(pr.v,G);
+    near(D,Ys[k]+d,0.05,'D for Y='+Ys[k]);
+  }
+});
+
+/* T30 — v38: ppm سطر نزدیک > ppm سطر دور + نگاشت کامل بدون صفر */
+T('T30','v38 ppmRow grows downward, buildPpmMap has no zeros',function(){
+  const G=GVS.depthGeomFromHorizon(800,800,160,300,140,1.15);
+  ok(G,'geom null');
+  near(G.theta,Math.atan((300-140)/800),1e-9,'theta from horizon');
+  const pFar=GVS.ppmRow(150,G),pMid=GVS.ppmRow(320,G),pNear=GVS.ppmRow(560,G);
+  ok(pFar>0.5&&pMid>pFar&&pNear>pMid,'ppm order: '+pFar+' '+pMid+' '+pNear);
+  ok(!isFinite(GVS.groundDist(100,G)),'above horizon must be Infinity');
+  const m=GVS.buildPpmMap(670,G);
+  ok(m.length===670,'map len');
+  for(let y=0;y<670;y++)ok(m[y]>0.5&&m[y]<20000,'row '+y+' ppm='+m[y]);
+  ok(m[669]>m[0],'near rows denser than sky rows');
+});
+
+/* T31 — v38: ورودی‌های نامعتبر عمق */
+T('T31','v38 depth invalid inputs',function(){
+  ok(GVS.depthGeomFromHorizon(5,5,160,90,40,1.15)===null,'tiny f');
+  ok(GVS.ppmRow(100,null)===0,'null geom');
+  ok(!isFinite(GVS.groundDist(100,null)),'null geom dist');
+});
+
 let p=0,f=0;
 for(const r of results){
   if(r.ok){p++;console.log('  PASS '+r.id+' — '+r.name);}
