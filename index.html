@@ -108,6 +108,8 @@ input[type=file]{display:none}
 .ar-chipic{width:36px;height:36px;border-radius:50%;background:rgba(25,25,25,.55);display:flex;align-items:center;justify-content:center;font-size:16px;filter:grayscale(1);opacity:.5;transition:all .2s;border:none;cursor:pointer}
 .ar-chipic.ok{filter:none;opacity:1;box-shadow:0 0 0 2px rgba(52,199,89,.9)}
 .ar-chipic.warn{filter:none;opacity:1;box-shadow:0 0 0 2px rgba(255,159,67,.9)}
+#arFileBtn{filter:none;opacity:.85}
+#arFileBtn:active{opacity:1;box-shadow:0 0 0 2px rgba(127,224,176,.55)}
 .ar-dot{width:10px;height:10px;border-radius:50%;background:#ff4545;display:none;animation:arblink 1s infinite}
 .ar-dot.show{display:block}
 @keyframes arblink{50%{opacity:.15}}
@@ -166,6 +168,15 @@ input[type=file]{display:none}
 .ar-shutter.rec span{background:#ff4545;animation:arblink 1.2s infinite}
 .ar-shutter.done span{background:#34c759}
 .ar-shutter.done::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;font-weight:bold}
+/* v35: نوار کنترل ویدیوی ذخیره‌شده */
+.ar-vidbar{position:absolute;bottom:calc(126px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(430px,88vw);display:none;align-items:center;gap:10px;padding:9px 13px;background:rgba(7,13,11,.74);border:1px solid rgba(127,224,176,.28);border-radius:16px;z-index:4;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.ar-vidbar.on{display:flex}
+.ar-vidbar .vidbtn{width:34px;height:34px;min-width:34px;border-radius:50%;border:none;background:rgba(127,224,176,.14);color:#7fe0b0;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.ar-vidbar .vidbtn:active{background:rgba(127,224,176,.3)}
+.ar-vidbar .vidbtn .icn{width:18px;height:18px}
+.ar-vidbar input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:rgba(127,224,176,.35);outline:none;cursor:pointer}
+.ar-vidbar input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:#7fe0b0;border:none;box-shadow:0 0 6px rgba(127,224,176,.6)}
+.ar-vidbar .vidtime{font:600 10.5px Menlo,monospace;color:#9fd8bd;white-space:nowrap;letter-spacing:.4px}
 .ar-thumb.pulse{animation:thumbPulse 1.1s ease-in-out infinite}
 @keyframes thumbPulse{0%,100%{box-shadow:0 0 0 2px rgba(127,224,176,.9)}50%{box-shadow:0 0 0 8px rgba(127,224,176,0)}}
 .ar-thumb{position:absolute;bottom:calc(34px + env(safe-area-inset-bottom));left:calc(20px + env(safe-area-inset-left));width:54px;height:54px;border-radius:12px;border:2px solid rgba(255,255,255,.7);background:#111 center/cover no-repeat;cursor:pointer;z-index:3;display:none}
@@ -256,6 +267,14 @@ input[type=file]{display:none}
 <symbol id="i-dl" viewBox="0 0 24 24">
   <path d="M12 4.2v9.6"/><path d="M8.1 10.4l3.9 3.9 3.9-3.9"/><path d="M5 19.2h14"/>
 </symbol>
+<symbol id="i-film" viewBox="0 0 24 24">
+  <path d="M4 5.4h16v13.2H4z"/>
+  <path d="M4 9.6h16M4 14.4h16M9 5.4v13.2M15 5.4v13.2"/>
+</symbol>
+<symbol id="i-restart" viewBox="0 0 24 24">
+  <path d="M5.2 12a6.8 6.8 0 1 0 2-4.8"/>
+  <path d="M5 4.6v4.2h4.2"/>
+</symbol>
 <symbol id="i-logo" viewBox="0 0 24 24">
   <path d="M12 2.6l7.2 4.1v10.6L12 21.4l-7.2-4.1V6.7z"/>
   <circle cx="9.1" cy="15.5" r="1.7"/>
@@ -270,6 +289,7 @@ input[type=file]{display:none}
   <button id="arClose" class="ar-close"><svg class="icn" viewBox="0 0 24 24"><use href="#i-x"/></svg></button>
   <div class="ar-topright">
     <span id="arStRec" class="ar-dot"></span>
+    <button id="arFileBtn" class="ar-chipic" title="ویدیوی ذخیره‌شده"><svg class="icn" viewBox="0 0 24 24"><use href="#i-film"/></svg></button>
     <button id="arPal" class="ar-chipic" title="tracer color"><svg class="icn" viewBox="0 0 24 24"><use href="#i-hue"/></svg></button>
     <span id="arStClub" class="ar-chipic"><svg class="icn" viewBox="0 0 24 24"><use href="#i-club"/></svg></span>
     <span id="arStBall" class="ar-chipic"><svg class="icn" viewBox="0 0 24 24"><use href="#i-ball"/></svg></span>
@@ -295,6 +315,13 @@ input[type=file]{display:none}
   <button id="arShutter" class="ar-shutter"><span></span></button>
   <button id="arFlip" class="ar-flip"><svg class="icn" viewBox="0 0 24 24"><use href="#i-flip"/></svg></button>
   <div id="arSummary"></div>
+  <!-- v35: ویدیوی ذخیره‌شده — انتخاب فایل + نوار کنترل -->
+  <input type="file" id="arFileIn" accept="video/*,.mp4,.mov,.m4v,.webm">
+  <div id="arVidBar" class="ar-vidbar">
+    <button id="vidRestart" class="vidbtn" title="از ابتدا"><svg class="icn" viewBox="0 0 24 24"><use href="#i-restart"/></svg></button>
+    <input type="range" id="vidSeek" min="0" max="1000" value="0" step="1">
+    <span id="vidTime" class="vidtime">0:00 / 0:00</span>
+  </div>
 </div>
 
 <div id="toast" class="toast"></div>
@@ -534,6 +561,7 @@ function makeARDemo(){
 function stopAll(){
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
   stopRec();
+  stopFile(); /* v35: ویدیوی ذخیره‌شده */
   vid.srcObject=null;demo=null;mode='none';
   try{if(stickyTimer){clearTimeout(stickyTimer);stickyTimer=null;}}catch(e){}
   sticky=null;
@@ -570,6 +598,97 @@ async function startCam(){
   }
 }
 function startDemo(){toast('دمو در این نسخه حذف شد — دوربین واقعی فعال است');}
+
+/* ================= v35: ویدیوی ذخیره‌شده (file mode) =================
+   فیلم قبلی از گالری باز می‌شود و همان پایپ‌لاین روی آن اجرا می‌شود:
+   detect → قفل خودکار → armed → ضربه (خودکار، بدون ضبط) → track → کارت نتیجه */
+let fileUrl=null;
+function fmtVidT(t){t=Math.max(0,t|0);return (t/60|0)+':'+String(t%60).padStart(2,'0');}
+function vidToggle(){
+  if(mode!=='file')return;
+  beep(vid.paused?1150:850);
+  if(vid.paused){vid.play().catch(()=>{});}else{vid.pause();}
+}
+function vidRestart(){
+  if(mode!=='file')return;
+  beep(700);
+  vid.currentTime=0;
+  vid.play().catch(()=>{});
+  /* ریست کامل تا پایپ‌لاین از صفر دوباره اجرا شود */
+  ball=null;stTracks=[];prevCand=null;ballStable=0;trail=[];detCands=[];liveArc=null;
+  calib3D=null;fit3Dlive=null;tHit3D=null;kf=null;vel={x:0,y:0};lostN=0;outN=0;lowRun=0;
+  lastLockR=0;obs=[];predPts=null;
+  setPhase('detect');
+  toast('از ابتدا — قفل خودکار روی توپ',2000);
+}
+async function startFile(f){
+  stopAll();
+  if(fileUrl){try{URL.revokeObjectURL(fileUrl);}catch(e){}fileUrl=null;}
+  fileUrl=URL.createObjectURL(f);
+  vid.srcObject=null;
+  vid.src=fileUrl;
+  vid.muted=false;
+  try{
+    await vid.play();
+  }catch(e){
+    vid.muted=true;
+    try{await vid.play();}catch(e2){}
+  }
+  await new Promise(r=>setTimeout(r,350)); /* time for the decoder to accept or reject the file */
+  if(vid.error||vid.readyState<1){
+    toast('این ویدیو قابل پخش نیست (فرمت پشتیبانی نمی‌شود)',3200);
+    stopFile();mode='none';
+    $('arShutter').classList.remove('rec','done');
+    return;
+  }
+  mode='file';
+  setPhase('detect');
+  $('arVidBar').classList.add('on');
+  $('arFlip').style.display='none';
+  $('vidSeek').value=0;
+  $('vidTime').textContent='0:00 / 0:00';
+  toast('ویدیو بارگذاری شد — قفل خودکار روی توپ · اسلایدر = اسکرول فیلم',3400);
+}
+function stopFile(){
+  const hadSrc=!!fileUrl||vid.hasAttribute('src');
+  if(fileUrl){try{URL.revokeObjectURL(fileUrl);}catch(e){}fileUrl=null;}
+  if(hadSrc){try{vid.pause();vid.removeAttribute('src');vid.load();}catch(e){}}
+  const bar=$('arVidBar');if(bar)bar.classList.remove('on');
+  const fl=$('arFlip');if(fl)fl.style.display='';
+  $('arShutter').classList.remove('rec','done');
+}
+$('arFileBtn').onclick=()=>{beep(720);$('arFileIn').click();};
+$('arFileIn').onchange=function(){
+  const f=this.files&&this.files[0];
+  this.value='';
+  if(!f)return;
+  const isVid=(f.type&&f.type.indexOf('video')===0)||/\.(mp4|mov|m4v|webm|mkv)$/i.test(f.name);
+  if(!isVid){toast('فایلی که برداشتید ویدیو نیست',2400);return;}
+  startFile(f);
+};
+$('vidRestart').onclick=vidRestart;
+$('vidSeek').addEventListener('input',function(){
+  if(mode!=='file')return;
+  if(vid.duration&&isFinite(vid.duration)&&vid.duration>0){
+    vid.currentTime=(this.value/1000)*vid.duration;
+    /* اسکرول وسطِ تحلیل → بازگشت به detect تا از همین فریم قفل شود */
+    if(phase!=='detect'&&phase!=='done'){
+      ball=null;stTracks=[];prevCand=null;ballStable=0;
+      setPhase('detect');
+    }
+  }
+});
+vid.addEventListener('ended',()=>{
+  if(mode==='file'&&phase!=='done')toast('پایان ویدیو — برای دوباره، ↺ را بزن',2800);
+});
+vid.addEventListener('error',()=>{
+  if(mode!=='file'||!fileUrl)return;
+  const c=vid.error?vid.error.code:0;
+  if(c!==3&&c!==4)return; /* 3=decode, 4=unsupported source */
+  toast('این ویدیو قابل پخش نیست (فرمت پشتیبانی نمی‌شود)',3200);
+  stopFile();
+  mode='none';
+});
 /* قفل چسبان: ۵ ثانیه بعد از ریست، اگر دوربین باز است و همان حوالی توپ ماند، خودش قفل می‌کند.
    کاملاً جدا از لمس — بعد از آن کاربر همچنان می‌تواند لمس کند و قفل جدید بزند. */
 let sticky=null,stickyTimer=null;
@@ -644,6 +763,10 @@ $('arClose').onclick=()=>{$('arOverlay').classList.remove('on');stopAll();phase=
   try{if(screen.orientation&&screen.orientation.unlock)screen.orientation.unlock();}catch(e){}};
 $('arShutter').onclick=()=>{
   beep(980);
+  if(mode==='file'){ /* v35: در حالت ویدیو، شاتر = پخش/توقف (ضبطی لازم نیست) */
+    if(phase==='done'){resetShot();return;}
+    vidToggle();return;
+  }
   if(mode==='none'){(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)?startCam():startDemo();return;}
   if(phase==='armed'){
     if(!ball){toast('اول روی توپ در تصویر بزن');return;}
@@ -1039,6 +1162,15 @@ function armedStep(gray,data,dt){
   else if(!found&&dens>0.085)impactCnt++;
   else impactCnt=0;
   if(impactCnt>=2){
+    if(mode==='file'&&!vid.paused){ /* v35: در ویدیو — ضربه = شروع خودکارِ ردیابی (بدون ضبط) */
+      tImpact=performance.now();
+      liveArc=null;
+      trail=[{x:ball.x,y:ball.y}];
+      kf=makeKF(ball.x,ball.y,0.016);trackMatched=0;trackTotal=0;obs=[];predPts=null;
+      apexY=ball.y;distNow=0;lostN=0;outN=0;lowRun=0;lastSpd=0;impactCnt=0;clubSeen=false;
+      setPhase('track');beep(1250);
+      return;
+    }
     /* حالت دستی: حرکت توپ قبل از ضبط فقط نقطه‌ی قفل را تازه می‌کند */
     if(found){ball.x=ball.x*0.3+bx*0.7;ball.y=ball.y*0.3+by*0.7;}
     impactCnt=0;
@@ -1793,7 +1925,11 @@ function updPanels(dt){
     calibEl.innerHTML=hintOn?'TAP ZONE ACTIVE — SEEKING':(lightOk?(autoOn?'AUTO-LOCK · TAP TO GUIDE':'TAP TO GUIDE'):(autoOn?'LOW LIGHT · AUTO-LOCK':'LOW LIGHT · TAP'));
   }else if(phase==='armed'){
     calibEl.style.display='block';
-    calibEl.innerHTML=(tapHint&&performance.now()<tapHint.until)?'TAP ZONE — SEEKING BALL':(calib3D?'3D CALIB ✓ · PRESS ● TO RECORD':'PRESS ● TO RECORD');
+    if(mode==='file'){ /* v35: در ویدیو، ضربه به‌خودی‌خود ردیابی را شروع می‌کند */
+      calibEl.innerHTML=(tapHint&&performance.now()<tapHint.until)?'TAP ZONE — SEEKING BALL':(calib3D?'3D CALIB ✓ · IMPACT = AUTO-TRACK':'LOCKED · IMPACT = AUTO-TRACK');
+    }else{
+      calibEl.innerHTML=(tapHint&&performance.now()<tapHint.until)?'TAP ZONE — SEEKING BALL':(calib3D?'3D CALIB ✓ · PRESS ● TO RECORD':'PRESS ● TO RECORD');
+    }
   }else{
     calibEl.style.display='none';
   }
@@ -1808,17 +1944,23 @@ function loop(ts){
   if(phase==='done'){updPanels(dt);return;} /* فریز آخرین فریم ضربه پشت کارت نتیجه */
   ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
   let ready=false;
-  if(mode==='cam'&&vid.readyState>=2){
+  if((mode==='cam'||mode==='file')&&vid.readyState>=2){ /* v35: file = ویدیوی ذخیره‌شده */
     const vw=vid.videoWidth||1280,vh=vid.videoHeight||720;
     const sw=vw,sh=vh,sx=0,sy=0;
     const s=Math.max(cv.width/sw,cv.height/sh);
     const dw=sw*s,dh=sh*s,dx=(cv.width-dw)/2,dy=(cv.height-dh)/2;
-    if(facing==='user'){
+    if(mode==='cam'&&facing==='user'){
       ctx.save();ctx.translate(cv.width,0);ctx.scale(-1,1);
       ctx.drawImage(vid,sx,sy,sw,sh,dx,dy,dw,dh);
       ctx.restore();
     }else ctx.drawImage(vid,sx,sy,sw,sh,dx,dy,dw,dh);
     ready=true;
+  }
+  /* v35: نوار کنترل ویدیو (زمان + اسلایدر) */
+  if(mode==='file'&&ready&&frameCount%6===0&&vid.duration&&isFinite(vid.duration)){
+    const st=$('vidSeek');
+    if(document.activeElement!==st)st.value=Math.round((vid.currentTime/vid.duration)*1000);
+    $('vidTime').textContent=fmtVidT(vid.currentTime)+' / '+fmtVidT(vid.duration);
   }else if(mode==='demo'&&demo){
     demoT+=dt;
     if(demoT>=demo.dur){
