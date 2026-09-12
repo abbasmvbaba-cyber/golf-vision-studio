@@ -406,6 +406,7 @@ let ball=null,ballStable=0,prevCand=null,pxPerMeter=80;
 let clubSeen=false,clubBox=null;
 let vel={x:0,y:0},lostN=0,tImpact=0,trail=[],seedCol=[245,245,245];
 let apexY=0,distNow=0,lastSpd=0,outN=0,lowRun=0,armGrace=0,detectMiss=0,lowThr=false,lastGray=null,lastData=null;
+let fileTapFail=null,lastNoBallHintAt=0; /* v35.3: قفل دستی در ویدیو */
 const ballDet={lastR:0};
 let kf=null,trackMatched=0,trackTotal=0,predPts=null;
 let detCands=[],liveArc=null; /* v30: لیست کاندیدای تمام‌کادر + قوس پیش‌بینی زنده */
@@ -801,6 +802,7 @@ function resetShot(){
   }catch(e){}
   ball=null;prevCand=null;ballStable=0;trail=[];prevGray=null;vel={x:0,y:0};
   outN=0;lowRun=0;detectMiss=0;lowThr=false;clubSeen=false;clubBox=null;impactCnt=0;
+  fileTapFail=null;lastNoBallHintAt=0; /* v35.3 */
   detCands=[];liveArc=null;stTracks=[];autoCooldownUntil=performance.now()+1200;tapHint=null;calib3D=null;fit3Dlive=null;tHit3D=null;
   setPhase('detect');
 }
@@ -1036,7 +1038,13 @@ function detectStep(gray,data){
   }
   if(!detCands.length){
     prevCand=null;ballStable=0;detectMiss++;
-    if(detectMiss>40&&!lowThr){lowThr=true;detectMiss=0;}
+    /* v35.3: ویدیو — آستانه زودتر پایین بیاید (توپ تیره/کنتراست کم) */
+    if(detectMiss>(mode==='file'?15:40)&&!lowThr){lowThr=true;detectMiss=0;}
+    /* v35.3: راهنمای دوره‌ای وقتی هیچ سیگنالی نیست */
+    if(mode==='file'&&performance.now()-(lastNoBallHintAt||0)>6000){
+      lastNoBallHintAt=performance.now();
+      toast('سیگنالِ توپ دیده نشد — دو بار روی توپ بزن تا دستی قفل شود',3200);
+    }
     return;
   }
   detectMiss=0;
@@ -1142,7 +1150,7 @@ function tryCalib3D(uA,vA,rA){
 }
 function lockBallAt(lx,ly,lr,src){
   const r=clampN(lr,2,60);
-  lastLockR=r;stTracks=[];tapHint=null;calib3D=null;fit3Dlive=null;tHit3D=null;
+  lastLockR=r;stTracks=[];tapHint=null;calib3D=null;fit3Dlive=null;tHit3D=null;fileTapFail=null;lastNoBallHintAt=0;
   calib3D=tryCalib3D(lx,ly,r);
   if(src==='auto'&&!autoToastDone){autoToastDone=true;toast(calib3D?'قفل خودکار ✓ + کالیبراسیون ۳بعدی ✓ — برای کمک، روی ناحیه‌ی توپ بزن':'قفل خودکار ✓ — برای کمک، روی ناحیه‌ی توپ بزن',2800);}
   pxPerMeter=mode==='demo'?1.4:clampN(r*2/0.04267,12,4000);
@@ -1155,18 +1163,72 @@ function lockBallAt(lx,ly,lr,src){
   stabC.x=0;stabC.y=0;stabC.lx=lx;stabC.ly=ly;slowCnt=0;sdPeak=0;stabBall={x:lx,y:ly};noStrongX=0;noStrongY=0;globalThis.__alignHX=[];globalThis.__alignHY=[];globalThis.__alignWin={g:null,n:0};globalThis.__winD=null; /* v35.1: مبدأِ مختصات پایدار + پنجره‌ی بازپیمایش */
   setPhase('armed');beep(880);
 }
+/* v35.3: تخمین شعاع توپ در نقطه‌ی لمس (برای قفل دستی در ویدیو) —
+   روشن‌ترین نقطه‌ی محلی را پیدا می‌کند و دایره را تا افتِ روشنایی به زمینه گسترش می‌دهد */
+function estimateBallR(cx,cy){
+  try{
+    let px=Math.round(cx),py=Math.round(cy),m=0;
+    for(let dy=-14;dy<=14;dy++)for(let dx=-14;dx<=14;dx++){
+      const x=Math.round(cx)+dx,y=Math.round(cy)+dy;
+      if(x<2||y<2||x>=AW-2||y>=AH-2)continue;
+      const g=lastGray[y*AW+x];
+      if(g>m){m=g;px=x;py=y;}
+    }
+    if(m<0.28)return 4; /* هیچ سیگنالی — شعاع پیش‌فرض */
+    let bg=0,bn=0;
+    for(let k=0;k<24;k++){
+      const a=k/24*6.2832;
+      const x=Math.round(px+Math.cos(a)*16),y=Math.round(py+Math.sin(a)*16);
+      if(x<0||y<0||x>=AW||y>=AH)continue;
+      bg+=lastGray[y*AW+x];bn++;
+    }
+    if(!bn)bg=0;else bg/=bn;
+    const diff=m-bg;
+    if(diff<=0.04)return 4;
+    let r=4;
+    for(let rr=2;rr<=30;rr+=1){
+      let s=0,n=0;
+      for(let k=0;k<28;k++){
+        const a=k/28*6.2832;
+        const x=Math.round(px+Math.cos(a)*rr),y=Math.round(py+Math.sin(a)*rr);
+        if(x<0||y<0||x>=AW||y>=AH)continue;
+        s+=lastGray[y*AW+x];n++;
+      }
+      if(!n)break;
+      if(s/n<bg+0.35*diff){r=Math.max(2,rr-1);break;}
+      r=rr;
+    }
+    return clampN(r,2,45);
+  }catch(e){return 4;}
+}
 /* v32: تاچ = راهنمای ناحیه‌یابی (نه قفل مستقیم)
    1) ناحیه‌ی تاچ برای ۴ ثانیه ثبت می‌شود (اسکن شل‌تر + قفل سریع‌تر در همان ناحیه)
-   2) اگر کاندیدای معتبرِ توپ نزدیک تاچ هست → قفل فوریِ تأییدشده (کمک برای یافتن سریع‌تر) */
+   2) اگر کاندیدای معتبرِ توپ نزدیک تاچ هست → قفل فوریِ تأییدشده (کمک برای یافتن سریع‌تر)
+   v35.3: در ویدیو — اگر سیگنالی نبود، دو تاچِ پشت‌سرهم در همان نقطه = قفل دستی مستقیم */
 function tapAssist(tx,ty){
   if(!lastGray)return;
   tapHint={x:tx,y:ty,until:performance.now()+TAP_HINT_MS};
   beep(700);
   const c=localBallCandidate(tx,ty);
   const c2=c||scanHintCands(lastGray,lastData,tx,ty)[0];
-  if(c2&&c2.score>0.9){
+  const tapScoreTh=mode==='file'?0.8:0.9; /* v35.3: در ویدیو شل‌تر */
+  if(c2&&c2.score>tapScoreTh){
     lockBallAt(c2.x,c2.y,c2.r,'tap-verified');
     toast('🎯 توپ در ناحیه‌ی لمس تأیید و قفل شد',1600);
+    fileTapFail=null;
+    return;
+  }
+  if(mode==='file'&&phase==='detect'){
+    const now=performance.now();
+    if(fileTapFail&&now-fileTapFail.t<5000&&Math.hypot(tx-fileTapFail.x,ty-fileTapFail.y)<48){
+      const r=estimateBallR(tx,ty);
+      lockBallAt(tx,ty,r,'tap-forced');
+      toast('✓ قفل دستی روی نقطه‌ی لمس — ردیابی شروع شد',2200);
+      fileTapFail=null;
+      return;
+    }
+    fileTapFail={x:tx,y:ty,t:now};
+    toast('توپ معتبری در آن ناحیه ندیدم — اگر توپ همان‌جاست، دوباره بزن (قفل دستی)',2800);
     return;
   }
   if(phase==='armed'){

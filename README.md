@@ -225,3 +225,28 @@ while building; the canvas freezes on the card after export.
 
 MediaRecorder/export path is browser-only — verify on device (iOS Safari
 14.5+).
+
+---
+
+## v35.3 — File-mode "always lockable" (قفل تضمینی در ویدیو)
+
+User report: ball never found in file mode (dark/low-contrast footage). Fixes
+(file mode only — camera path untouched):
+
+1. **Two-tap force lock** — tapping the ball twice in the same spot (≤5s, ≤48px
+   apart) with no detected candidate now **locks directly at the tap point**
+   with an estimated radius (`estimateBallR`: local peak + radius growth until
+   brightness falls to background). Tracking then refines the lock itself.
+2. **Faster threshold drop** — `lowThr` engages after 15 misses in file mode
+   (was 40) so darker balls get a chance sooner.
+3. **Looser tap-verified threshold** in file mode (score >0.8 instead of 0.9).
+4. **Periodic hint** — if no ball signal for a while: «سیگنالِ توپ دیده نشد —
+   دو بار روی توپ بزن تا دستی قفل شود».
+
+| Test | Result |
+|---|---|
+| Syntax | OK |
+| harness.js | 28/28 |
+| Shake E2E ×2 | 5/5 each |
+| File-mode E2E | lock f19, impact f62, 102 matched |
+| estimateBallR unit (6 synthetic scenes incl. dark/low-contrast) | 6/6 |
