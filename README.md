@@ -250,3 +250,50 @@ User report: ball never found in file mode (dark/low-contrast footage). Fixes
 | Shake E2E ×2 | 5/5 each |
 | File-mode E2E | lock f19, impact f62, 102 matched |
 | estimateBallR unit (6 synthetic scenes incl. dark/low-contrast) | 6/6 |
+
+## v35.4 — Ball detection for bright full-shot videos (توپ در ویدیوهای پرنورِ دوردست)
+
+User report: in a distant full-shot video (bright castle/background, ball a tiny
+dot in the lower frame), file mode never locked the ball. Root cause: the
+ball's blob merges with the bright grass strip (bad compactness) so it never
+reaches the candidate list, while castle windows / white gloves / white shoes
+dominate the top scores.
+
+Fixes (file mode only — camera path byte-identical):
+
+1. **White-dot candidate source** (`scanWhiteDots`) — a second detector for
+   compact bright-neutral dots (local max + ring-contrast gap ≥0.18 +
+   measured radius). Scored on the same scale as blobs
+   (`gray + gap·2.5 + y/AH·0.8`), NMS-merged with blob candidates.
+   Gated: only runs when no solid ball-like blob (y>0.35, score≥1.85, r 3–10)
+   is present — zero cost on normal footage. Scan is bottom-up on a 2px stride
+   (worst case ≈ 8 ms, typically < 1 ms).
+2. **Bottom-frame bias + sky penalty** in `scanBallCands` (file mode):
+   `+ (y/AH)·0.8` score bonus and `−0.5` for y<26% (sky/building zone).
+3. **Lock selection** (file mode) among full-frame stable hypotheses:
+   - sky veto (y<26% never locks),
+   - **dark-surround veto** (≥55% dark ring ⇒ on the player's body: gloves /
+     shoes / torso — measured 0.83 for the glove vs ≤0.31 for every grass
+     object in both test videos),
+   - **rigidity** (`dr` = max |Δr| over the hypothesis lifetime, new additive
+     field in `autoLockMulti`): the ball is a rigid sphere (dr≈0.2–0.4);
+     club-head glints flicker r 2↔4.5 (dr≥2.5). Ties (|Δdr|≤0.35) fall back
+     to larger r (v35.1 behavior).
+4. **Impact trigger** (app `armedStep`): added the swing-burst path
+   (`!found && dens>0.085`) — a full-frame swing moving the background around
+   the lock point even when the ball pixel is momentarily lost.
+
+No early lock: the ball accumulates its full frame budget naturally
+(~f13–19), transient blobs (e.g. a 10-frame sparkle) can no longer win.
+
+| Test | Result |
+|---|---|
+| Syntax (app + math-core) | OK |
+| harness.js | 28/28 |
+| OLD video (driving-range) faithful E2E ×2 | 5/5 each — lock f13 (158,307)=ball, impact f68, 96 matched |
+| OLD video clean E2E | 3/3 — lock f13, impact f62, 102 matched |
+| NEW video (user's full-shot, castle bg) faithful E2E ×2 | 5/5 each — lock f13 (246,575)=ball (truth 243,578), impact f60 (real swing), 275 matched |
+| scanWhiteDots benchmark | worst ≈ 8 ms (washed-out bright scene), <1 ms typical |
+| Camera mode | untouched (all changes behind `mode==='file'`; `dr` additive) |
+
+Two-tap force lock (v35.3) remains the guaranteed manual fallback.

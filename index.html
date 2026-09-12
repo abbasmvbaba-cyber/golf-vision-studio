@@ -910,7 +910,10 @@ function satOf(data,j){
   return mx<8?0:(mx-mn)/mx;
 }
 /* ---------- فاز ۱: شناسایی توپ — v30: لیست کاندیدای تمام‌کادر (scanBallCands) ---------- */
-function scanBallCands(gray,data,maxOut){
+function scanBallCands(gray,data,maxOut,botW,skyZone,skyPen){
+  /* v35.4: botW/skyZone/skyPen — فقط در file mode فعال (بایاس پایینِ کادر + جریمه‌ی
+     آسمان/ساختمان‌ها). پیش‌فرض‌ها = رفتار قبلی (دست‌نخورده برای دوربین). */
+  botW=botW==null?0.55:botW;skyZone=skyZone==null?1:skyZone;skyPen=skyPen||0;
   const N=AW*AH;
   let TH=lowThr?0.55:0.66;
   if(lastLumaAvg>0.72)TH+=0.06;else if(lastLumaAvg<0.3)TH-=0.07; /* PATCH 12 نور */
@@ -958,7 +961,8 @@ function scanBallCands(gray,data,maxOut){
     /* PATCH 43: بایاس زمین — توپ ایستاده پایین کادر است؛ سفیدیِ تنِ بازیکن (پیراهن/کیف) بر آن نمی‌برد */
     /* v34: بونوس اندازه — توپِ واقعی بلابِ بزرگ و پرشمار است؛ نویزِ روشنِ لبه‌ای (تلویزیون/بوق) ریز */
     const sizeB=0.4*Math.min(1,Math.max(0,(r-4)/8));
-    const score=mean+diff*2.5+(1-Math.abs(dcirc-1))*0.5+(cy/AH)*0.55+sizeB;
+    const skyB=(cy/AH)<skyZone?-skyPen:0; /* v35.4: توپ واقعی در آسمان/ساختمان نیست */
+    const score=mean+diff*2.5+(1-Math.abs(dcirc-1))*0.5+(cy/AH)*botW+sizeB+skyB;
     out.push({x:cx,y:cy,r,score});
     if(out.length>=32)break;
   }
@@ -1024,7 +1028,26 @@ function scanHintCands(gray,data,cx,cy){
 }
 /* v30: تشخیص = scanBallCands + ثبات چندفریمی (قفل فقط با لمس کاربر — مثل قبل) */
 function detectStep(gray,data){
-  detCands=scanBallCands(gray,data,8); /* لیست کاندید برای association (تمام‌کادر) */
+  /* v35.4: file mode — کاندیدای بیشتری (تا توپِ دور از بک‌گراندِ پرتلاش دور نماند)
+     + بایاسِ پایینِ کادر + جریمه‌ی ناحیه‌ی آسمان (y<26%) برای ساختمان/آسمان پُر نور */
+  detCands=scanBallCands(gray,data,mode==='file'?16:8,mode==='file'?0.8:0.55,mode==='file'?0.26:1,mode==='file'?0.5:0); /* لیست کاندید برای association (تمام‌کادر) */
+  /* v35.4: file mode — منبع دومِ کاندید: نقطه‌ی سفید (توپِ نشسته‌برخطِ چمنِ روشن
+     که بلابِ متصلش با نوارِ چمن می‌جوشد). فقط وقتی بلابِ بزرگِ مطمئن در نیمه‌ی پایینی
+     نبینیم اجرا می‌شود (ویدیوهای معمولی = هزینه‌ی صفر). */
+  if(mode==='file'){
+    const hasSolidBall=detCands.some(c=>c.y/AH>0.35&&c.score>=1.85&&c.r>=3&&c.r<=10);
+    if(!hasSolidBall){
+      const dots=scanWhiteDots(gray,data,10);
+      for(const d of dots){
+        if(detCands.some(c=>Math.hypot(c.x-d.x,c.y-d.y)<Math.max(5,c.r*0.8)))continue;
+        /* مقیاسِ هم‌خوان با امتیازِ بلاب‌ها (mean + diff*2.5 + band): هسته‌ی توپ سفیدتر
+           از لکه‌های روشنِ زمینه است → برتریِ واقعی */
+        d.score=gray[d.y*AW+d.x]+d.gap*2.5+(d.y/AH)*0.8;
+        detCands.push(d);
+      }
+      if(detCands.length>16){detCands.sort((a,b)=>b.score-a.score);detCands.length=16;}
+    }
+  }
   /* v32: تاچ = راهنمای ناحیه — اسکن شل‌تر داخل ناحیه‌ی تاچ + امتیاز ویژه */
   if(tapHint&&performance.now()<tapHint.until){
     const hc=scanHintCands(gray,data,tapHint.x,tapHint.y);
@@ -1070,7 +1093,41 @@ function detectStep(gray,data){
       const minF=mode==='file'?7:AUTO_LOCK_FRAMES;
       const al=gvsAutoLockMulti(stTracks,detCands,minF,minF*2,hint,hint?0:lastLockR,mode==='file'?1:0);
       stTracks=al.sts;
-      if(al.locked)lockBallAt(al.locked.x,al.locked.y,al.locked.r,'auto');
+      let lock=al.locked;
+      if(mode==='file'){
+        /* v35.4: انتخاب قفل در ویدیو — سه صافی:
+           (1) آسمان (y<26%) هرگز — ساختمان/پنجره‌های پرنور.
+           (2) حلقه‌ی پیرامونِ تیره (≥55% پیکسلِ تیره) رد می‌شود — اشیاءِ روی بدنِ
+               بازیکن (دستکش/کفش/تنه) با زمینِ چمن فرق می‌کنند.
+           (3) «صلب‌ترین در اندازه» برنده: توپ کره‌ی صلب است → r تقریباً ثابت
+               (dr کوچک)؛ گلیتِ سرِ کلاب بلابی با r لرزان است. اختلافِ dr نزدیک
+               (≤0.35) → بزرگ‌ترِ r برنده (رفتار v35.1).
+           اگر هیچ کاندیدای معتبری نبود → قفل نمی‌شود (راهنما + قفل دستیِ دو-تاچ). */
+        const darkS=function(s){
+          let dark=0,n=0;
+          for(let rad=s.r+3;rad<=s.r+10;rad+=3){
+            for(let k=0;k<28;k++){
+              const a=k/28*6.2832;
+              const xx=Math.round(s.x+Math.cos(a)*rad),yy=Math.round(s.y+Math.sin(a)*rad);
+              if(xx<0||yy<0||xx>=AW||yy>=AH)continue;
+              n++;if(gray[yy*AW+xx]<0.35)dark++;
+            }
+          }
+          return n?dark/n:1;
+        };
+        let best=null;
+        for(const s of al.sts){
+          if(s.y/AH<0.26||s.r<1.5||s.r>15)continue;
+          if(s.frames<s.min)continue;
+          if(darkS(s)>0.55)continue; /* روی بدنِ تیره‌ی بازیکن */
+          if(!best){best=s;continue;}
+          const da=s.dr||0,db=best.dr||0;
+          if(Math.abs(da-db)<=0.35){if(s.r>best.r)best=s;}
+          else if(da<db)best=s;
+        }
+        lock=best;
+      }
+      if(lock)lockBallAt(lock.x,lock.y,lock.r,'auto');
     }
   }
   /* قفل با لمس کاربر همیشه فعال است (override/کمک) — قفل خودکار فقط در حالت AUTO */
@@ -1162,6 +1219,88 @@ function lockBallAt(lx,ly,lr,src){
   prevGray=lastGray;armGrace=performance.now()+450;
   stabC.x=0;stabC.y=0;stabC.lx=lx;stabC.ly=ly;slowCnt=0;sdPeak=0;stabBall={x:lx,y:ly};noStrongX=0;noStrongY=0;globalThis.__alignHX=[];globalThis.__alignHY=[];globalThis.__alignWin={g:null,n:0};globalThis.__winD=null; /* v35.1: مبدأِ مختصات پایدار + پنجره‌ی بازپیمایش */
   setPhase('armed');beep(880);
+}
+/* v35.4: «نقطه‌ی سفیدِ خنثی با حلقه‌ی تیره‌تر» — دتکتور توپِ مستقل از شکل.
+   وقتی توپ روی خطِ چمنِ روشن (مُو/آفتاب) است، بلابِ متصل با خط یکی می‌شود و
+   با گیتِ کشیدگی رد می‌شود؛ اما هسته‌ی توپ (سفیدِ تقریباً خالص، اشباع بسیار کم،
+   حلقه‌ی اطرافش معنادارِ تیره‌تر) همیشه قابل‌تشخیص است. فقط در file mode فعال است
+   (منبع دومِ کاندید) — مسیر دوربین دست‌نخورده. */
+function scanWhiteDots(gray,data,maxOut){
+  /* v35.4: اسکن در استراید ۲px + ماکسیمم محلیِ ارزان (همسایه‌های استراید) —
+     هزینه‌ی ~۱/۸ نسخه‌ی اول. نقطه‌های کوچک‌تر از ۴px (رِ ۱/۲ توپ) از بین نمی‌روند. */
+  const out=[];
+  const CAP=64;
+  /* پایین‌به‌بالا: توپ همیشه در پایینِ کادر است — اگر CAP پر شود، نقطه‌های آسمان/
+     ساختمانِ بالا first قربانی می‌شوند، نه توپ. */
+  outer:
+  for(let y=AH-8;y>=8;y-=2){
+    const row=y*AW;
+    for(let x=8;x<AW-8;x+=2){
+      const i=row+x;
+      const g=gray[i];
+      if(g<0.82)continue;
+      if(satOf(data,i*4)>0.16)continue;
+      let mx=true;
+      for(let dy=-2;dy<=2&&mx;dy+=2){
+        const r2=row+dy;
+        for(let dx=-2;dx<=2;dx+=2){
+          if(!dx&&!dy)continue;
+          if(gray[r2+x+dx]>g){mx=false;break;}
+        }
+      }
+      if(!mx)continue;
+      let bestGap=0;
+      for(let ri=0;ri<2;ri++){
+        const rr=3+ri*2;
+        let s=0,n=0;
+        for(let k=0;k<16;k++){
+          const a=k*0.3927;
+          const rx=(x+Math.cos(a)*rr+0.5)|0,ry=(y+Math.sin(a)*rr+0.5)|0;
+          if(rx<0||ry<0||rx>=AW||ry>=AH)continue;
+          s+=gray[ry*AW+rx];n++;
+        }
+        if(n<12)continue;
+        const gap=g-s/n;
+        if(gap>bestGap)bestGap=gap;
+      }
+      if(bestGap<0.18)continue;
+      out.push({x,y,gap:bestGap});
+      if(out.length>=CAP)break outer;
+    }
+  }
+  out.sort((a,b)=>b.gap-a.gap);
+  const kept=[];
+  for(const d of out){
+    let dup=false;
+    for(const k of kept){if(Math.hypot(k.x-d.x,k.y-d.y)<7){dup=true;break;}}
+    if(dup)continue;
+    let bg=0,bn=0;
+    for(let k=0;k<16;k++){
+      const a=k/16*6.28318;
+      const rx=(d.x+Math.cos(a)*9+0.5)|0,ry=(d.y+Math.sin(a)*9+0.5)|0;
+      if(rx<0||ry<0||rx>=AW||ry>=AH)continue;
+      bg+=gray[ry*AW+rx];bn++;
+    }
+    if(!bn)continue;
+    bg/=bn;
+    let r=2.2;
+    for(let rr=2;rr<=10;rr++){
+      let s=0,n=0;
+      for(let k=0;k<24;k++){
+        const a=k/24*6.28318;
+        const rx=(d.x+Math.cos(a)*rr+0.5)|0,ry=(d.y+Math.sin(a)*rr+0.5)|0;
+        if(rx<0||ry<0||rx>=AW||ry>=AH)continue;
+        s+=gray[ry*AW+rx];n++;
+      }
+      if(!n)break;
+      if(s/n<bg+0.5*d.gap)break;
+      r=rr;
+    }
+    d.r=r;
+    kept.push(d);
+    if(kept.length>=(maxOut||10))break;
+  }
+  return kept;
 }
 /* v35.3: تخمین شعاع توپ در نقطه‌ی لمس (برای قفل دستی در ویدیو) —
    روشن‌ترین نقطه‌ی محلی را پیدا می‌کند و دایره را تا افتِ روشنایی به زمینه گسترش می‌دهد */

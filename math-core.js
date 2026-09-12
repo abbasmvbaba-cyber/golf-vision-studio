@@ -219,13 +219,15 @@ function autoLockMulti(sts,cands,minF,smallF,hint,sizeRef,loose){
     if(best>=0){
       used[best]=true;
       const c=cands[best];
-      out.push({x:st.x*0.6+c.x*0.4,y:st.y*0.6+c.y*0.4,r:c.r,frames:st.frames+1,min:st.min,misses:0});
+      /* v35.4: dr = بیشینه‌ی نوسان شعاع بلاب در طول عمر فرضیه — توپِ کروی صلب
+         r ثابت دارد (dr≈0.2-0.4)؛ گلیتِ سرِ کلاب/کفش/نوارِ چمن r لرزان دارند */
+      out.push({x:st.x*0.6+c.x*0.4,y:st.y*0.6+c.y*0.4,r:c.r,frames:st.frames+1,min:st.min,misses:0,dr:Math.max(st.dr||0,Math.abs(c.r-st.r))});
     }else if(loose){
       /* v35.1: file mode — در ویدیوی فشرده‌شده بلاب گاهی ۱-۲ فریم افت می‌کند؛
          فرضیه نمی‌میرد، فقط یک فریم پس می‌رود (بدون ریست کامل) */
-      out.push({x:st.x,y:st.y,r:st.r,frames:Math.max(0,st.frames-1),min:st.min,misses:(st.misses||0)+1});
+      out.push({x:st.x,y:st.y,r:st.r,frames:Math.max(0,st.frames-1),min:st.min,misses:(st.misses||0)+1,dr:st.dr||0});
     }else if((st.misses||0)<2){
-      out.push({x:st.x,y:st.y,r:st.r,frames:st.frames,min:st.min,misses:(st.misses||0)+1});
+      out.push({x:st.x,y:st.y,r:st.r,frames:st.frames,min:st.min,misses:(st.misses||0)+1,dr:st.dr||0});
     }
   }
   for(let pass=0;pass<2&&out.length<4;pass++){
@@ -235,7 +237,7 @@ function autoLockMulti(sts,cands,minF,smallF,hint,sizeRef,loose){
       const small=c.r<8;
       if((pass===0&&small)||(pass===1&&!small))continue;
       const hintOk=hint&&Math.hypot(c.x-hint.x,c.y-hint.y)<=hint.r;
-      out.push({x:c.x,y:c.y,r:c.r,frames:1,min:hintOk?hint.f:(small?smallF:minF),misses:0});
+      out.push({x:c.x,y:c.y,r:c.r,frames:1,min:hintOk?hint.f:(small?smallF:minF),misses:0,dr:0});
       used[j]=true;
     }
   }
