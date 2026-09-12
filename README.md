@@ -359,3 +359,10 @@ Also: skip duplicate video frames in **armed** (30 fps file on 60 Hz was
 resetting the impact counter).
 
 Harness: 28/28. SW cache `golf-ar-v37`.
+
+## v37 — Instagram story tracer (9:16)
+
+Product focus: marketing clip, not launch-monitor numbers.
+File mode canvas is **1080×1920**. Tracer is broadcast-style glow + hot core.
+Drive impact always draws the reconstructed arc; tap landing to aim it.
+Export bitrate 16 Mbps. Fake live-yardage pill hidden on reconstructed drives.

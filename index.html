@@ -370,6 +370,8 @@ function layoutDetect(){
   prevGray=null;
 }
 function fitCanvas(){
+  /* v37: حالت ویدیو = بوم استوری اینستاگرام ۹:۱۶ با کیفیت خروجی */
+  if(mode==='file'){cv.width=1080;cv.height=1920;layoutDetect();return;}
   const w=Math.max(1,window.innerWidth),h=Math.max(1,window.innerHeight);
   const k=clampN(Math.min(2,Math.max(0.5,1080/Math.max(w,h))),0.4,2);
   cv.width=Math.round(w*k);cv.height=Math.round(h*k);
@@ -382,7 +384,7 @@ const wmImg=new Image();let wmOk=false;
 wmImg.onload=()=>{wmOk=true;};wmImg.src='appicon.png';
 function drawWM(){
   if(!wmOk)return;
-  const s=cv.height*0.048,x=cv.width/2-s/2,y=cv.height*0.888,r=s*0.24;
+  const s=cv.height*0.042,x=cv.width/2-s/2,y=cv.height*0.80,r=s*0.24; /* بالای نوار UI استوری */
   ctx.save();
   ctx.direction='ltr';
   ctx.beginPath();
@@ -657,8 +659,9 @@ async function startFile(f){
     $('arShutter').classList.remove('rec','done');
     return;
   }
-  lastLockR=0;ballDet.lastR=0;launchPos=null; /* v35.1+v35.6 */
+  lastLockR=0;ballDet.lastR=0;launchPos=null;
   mode='file';
+  fitCanvas(); /* 1080×1920 استوری */
   setPhase('detect');
   exportOn=false; /* v35.2: هر ویدیوی تازه = حالت خروجی تازه */
   try{$('vidExport').classList.remove('busy');$('vidSeek').disabled=false;}catch(e){}
@@ -668,7 +671,7 @@ async function startFile(f){
   $('arFlip').style.display='none';
   $('vidSeek').value=0;
   $('vidTime').textContent='0:00 / 0:00';
-  toast('ویدیو فعال شد — قفل خودکار روی توپ · اگر قفل نشد، روی توپ بزن',4200);
+  toast('ویدیو استوری ۹:۱۶ — قفل خودکار · بعد از ضربه خط می‌آید · لمس فرود = تنظیم قوس',4200);
 }
 function stopFile(){
   const hadSrc=!!fileUrl||vid.hasAttribute('src');
@@ -679,6 +682,7 @@ function stopFile(){
   $('arShutter').classList.remove('rec','done');
   /* v35.2: بازگشت از ویدیو — شاتر برمی‌گردد + اگر خروجی در حال ساخت بود، لغو */
   try{$('arOverlay').classList.remove('vidmode');}catch(e){}
+  if(mode==='file'){mode='none';fitCanvas();}
   if(exportOn){exportOn=false;stopRec();
     try{$('vidExport').classList.remove('busy');$('vidSeek').disabled=false;}catch(e){}}
 }
@@ -1367,12 +1371,12 @@ function seedLaunchVel(kf,x,y){
 function makeReconFlight(x0,y0,land){
   const p0={x:x0,y:y0};
   const p2=land||{
-    x:clampN(x0+(AW*0.46-x0)*0.70, 22, AW-22),
-    y:clampN(AH*0.24, 30, y0-80)
+    x:clampN(x0+(AW*0.44-x0)*0.62, 28, AW-28),
+    y:clampN(AH*0.20, 36, y0-110)
   };
   const p1={
-    x:(p0.x+p2.x)*0.5,
-    y:clampN(Math.min(p0.y,p2.y)*0.10, AH*0.05, AH*0.18)
+    x:(p0.x+p2.x)*0.48,
+    y:clampN(AH*0.07, 18, y0*0.18)
   };
   const n=80, pts=[];
   for(let i=0;i<=n;i++){
@@ -1391,7 +1395,7 @@ function startReconTrack(x,y){
 function revealRecon(){
   if(!reconFull||reconFull.length<2)return;
   const t=(performance.now()-tImpact)/1000;
-  const reveal=clampN(t/2.2, 0.05, 1);
+  const reveal=clampN(t/2.0, 0.22, 1); /* از همان ضربه خط روی استوری دیده شود */
   const n=Math.max(2, Math.floor((reconFull.length-1)*reveal)+1);
   trail=reconFull.slice(0,n);
   const lp=trail[trail.length-1];
@@ -2305,7 +2309,7 @@ function startRec(){
     if(at)stream.addTrack(at);
     const mimes=['video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
     for(const m of mimes){if(window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(m)){recMime=m;break;}}
-    const opts=recMime?{mimeType:recMime,videoBitsPerSecond:12000000}:{videoBitsPerSecond:12000000};
+    const opts=recMime?{mimeType:recMime,videoBitsPerSecond:16000000}:{videoBitsPerSecond:16000000};
     rec=window.MediaRecorder?new MediaRecorder(stream,opts):new MediaRecorder(stream);
     rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
     rec.onstop=()=>{
@@ -2350,13 +2354,28 @@ function tracePath(s){
   ctx.lineTo(L.x*SCX,L.y*SCY);
 }
 function drawTracer(pts){
-  const s=smoothPts(pts,4);
+  /* v37: تریسر استوری — درخشش پخشی + هستهٔ روشن + سرِ توپ (ISSIE / JOOO) */
+  const s=smoothPts(pts,5);
   if(s.length<2)return;
-  const lw=clampN((ball?ball.r:8)*SCX*(reconMode?1.6:1.2),reconMode?12:8,reconMode?28:22);
+  const P=s.map(p=>({x:p.x*SCX,y:p.y*SCY}));
+  const lw=clampN(cv.width*(reconMode?0.020:0.014), 11, 26);
+  ctx.save();
   ctx.lineCap='round';ctx.lineJoin='round';
-  ctx.strokeStyle=hexA(tracerCol,0.22);ctx.lineWidth=lw*2.6;tracePath(s);ctx.stroke();
-  ctx.strokeStyle=hexA(tracerCol,0.45);ctx.lineWidth=lw*1.6;tracePath(s);ctx.stroke();
-  ctx.strokeStyle=tracerCol;ctx.lineWidth=lw;tracePath(s);ctx.stroke();
+  ctx.strokeStyle=hexA(tracerCol,0.10);ctx.lineWidth=lw*3.6;
+  ctx.beginPath();ctx.moveTo(P[0].x,P[0].y);for(let i=1;i<P.length;i++)ctx.lineTo(P[i].x,P[i].y);ctx.stroke();
+  ctx.strokeStyle=hexA(tracerCol,0.22);ctx.lineWidth=lw*2.4;
+  ctx.beginPath();ctx.moveTo(P[0].x,P[0].y);for(let i=1;i<P.length;i++)ctx.lineTo(P[i].x,P[i].y);ctx.stroke();
+  ctx.strokeStyle=hexA(tracerCol,0.55);ctx.lineWidth=lw*1.35;
+  ctx.beginPath();ctx.moveTo(P[0].x,P[0].y);for(let i=1;i<P.length;i++)ctx.lineTo(P[i].x,P[i].y);ctx.stroke();
+  ctx.strokeStyle=tracerCol;ctx.lineWidth=lw;
+  ctx.beginPath();ctx.moveTo(P[0].x,P[0].y);for(let i=1;i<P.length;i++)ctx.lineTo(P[i].x,P[i].y);ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,245,.92)';ctx.lineWidth=Math.max(2.5,lw*0.32);
+  ctx.beginPath();ctx.moveTo(P[0].x,P[0].y);for(let i=1;i<P.length;i++)ctx.lineTo(P[i].x,P[i].y);ctx.stroke();
+  const h=P[P.length-1];
+  const rg=ctx.createRadialGradient(h.x,h.y,0,h.x,h.y,lw*1.7);
+  rg.addColorStop(0,'#ffffff');rg.addColorStop(0.28,tracerCol);rg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=rg;ctx.beginPath();ctx.arc(h.x,h.y,lw*1.7,0,7);ctx.fill();
+  ctx.restore();
 }
 /* پالت رنگ tracer (سریع) + پنل تنظیمات کامل */
 (function(){
@@ -2560,10 +2579,10 @@ function drawHud(){
     drawTracer(trail);
     const lp=trail[trail.length-1];
     const br=Math.max(3,(ball?ball.r:6)*SCX*0.5);
+    if(reconMode){ /* استوری: عدد تخمینی روی قوس سینمایی نیاید */ return; }
     ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(lp.x*SCX,lp.y*SCY,br,0,7);ctx.fill();
     ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1.5;
     ctx.beginPath();ctx.arc(lp.x*SCX,lp.y*SCY,br+4,0,7);ctx.stroke();
-    /* مسافت زنده‌ی افزایشی زیر توپ — واحد/رنگ از تنظیمات کاربر */
     const label='≈ '+distTxt(distNow,1);
     ctx.direction='ltr';
     ctx.font='bold 15px Menlo,monospace';
@@ -2807,5 +2826,8 @@ $('statsExport').onclick=()=>{
 </script>
 <script>if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{});});}</script>
 </body>
+</html>
+</html>
+
 </html>
 </html>
